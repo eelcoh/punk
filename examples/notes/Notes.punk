@@ -1,4 +1,4 @@
-app [handle!] { Platform: platform "../../platforms/server/main.roc" }
+app [handle!] { Platform: platform "server" }
 
 import Platform.Http exposing [Request, Response]
 import Platform.Db

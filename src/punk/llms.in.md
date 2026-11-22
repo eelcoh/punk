@@ -25,7 +25,7 @@ is often caused by an earlier one.
 ## A program
 
 ```
-app [main!] { Platform: platform "../platforms/cli/main.roc" }
+app [main!] { Platform: platform "cli" }
 
 import Platform.Stdout
 
@@ -33,8 +33,9 @@ main! = fn () ->
     Stdout.line! "Hello"
 ```
 
-The path after `platform` is relative to the `.punk` file; it points to
-`platforms/cli/main.roc` in the punk-lang repository. A file is an `app`
+`platform "cli"` names one of the platforms that come with punk: `cli`,
+`server` or `tui`. (A path to a platform's `main.roc`, relative to the
+`.punk` file, works too.) A file is an `app`
 (it has `main!`) or a `module` (see "Modules").
 
 ## Syntax
@@ -339,8 +340,7 @@ them as the punk spelling (`String.fromInt`, `List.length`).
 
 ## The platform
 
-`platforms/cli` (`app [main!] { Platform: platform "platforms/cli/main.roc" }`,
-relative to your file) provides:
+`cli` (`app [main!] { Platform: platform "cli" }`) provides:
 
 ```
 Stdout.line! : Str => {}             -- prints a line
@@ -372,7 +372,7 @@ as D`. All examples use it; lowercase `pf` and `json` keep working.
 is one function, called for every request:
 
 ```
-app [handle!] { Platform: platform "platforms/server/main.roc", Json: "packages/json/main.roc" }
+app [handle!] { Platform: platform "server", Json: "packages/json/main.roc" }
 
 import Platform.Http exposing [Request, Response]
 
@@ -673,7 +673,7 @@ the encoded text instead.
 architecture. The app exposes its `Model` and `Msg` types and `main`:
 
 ```
-app [Model, Msg, main] { Platform: platform "platforms/tui/main.roc" }
+app [Model, Msg, main] { Platform: platform "tui" }
 
 import Platform.Tui exposing [Event]
 import Platform.Cmd

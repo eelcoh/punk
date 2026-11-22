@@ -2054,3 +2054,7 @@ test "a tag with arguments, used as a value, is a function" {
     ;
     try std.testing.expectEqualStrings(tail, out[out.len - tail.len ..]);
 }
+
+test {
+    _ = @import("platforms.zig");
+}

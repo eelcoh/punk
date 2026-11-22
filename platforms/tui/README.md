@@ -8,7 +8,7 @@ punk app is the Elm architecture: a model, an `update` for every event, and a
 `view` that says what the screen shows.
 
 ```
-app [Model, Msg, main] { Platform: platform "../../platforms/tui/main.roc" }
+app [Model, Msg, main] { Platform: platform "tui" }
 
 import Platform.Tui exposing [Event]
 import Platform.Cmd

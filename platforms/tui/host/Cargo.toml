@@ -14,9 +14,9 @@ path = "src/lib.rs"
 
 # ambit is used as a library, pinned to one commit, as in platforms/server/host.
 [dependencies]
-ambit-caps = { git = "https://github.com/eelcoh/ambit", rev = "b5f977178e408a4aa96c75d7ed073bb2f65be414" }
-ambit-caps-dir = { git = "https://github.com/eelcoh/ambit", rev = "b5f977178e408a4aa96c75d7ed073bb2f65be414" }
-ambit-tui = { git = "https://github.com/eelcoh/ambit", rev = "b5f977178e408a4aa96c75d7ed073bb2f65be414" }
+ambit-caps = { git = "https://github.com/eelcoh/ambit", rev = "d039ab5afb81fe81faa5ce00c41e937e4879ea85" }
+ambit-caps-dir = { git = "https://github.com/eelcoh/ambit", rev = "d039ab5afb81fe81faa5ce00c41e937e4879ea85" }
+ambit-tui = { git = "https://github.com/eelcoh/ambit", rev = "d039ab5afb81fe81faa5ce00c41e937e4879ea85" }
 punk-roc-abi = { path = "../../roc-abi" }
 # The same version and features as ambit's workspace, so there is one ratatui in the tree.
 ratatui-widgets = { version = "0.3.2", default-features = false }

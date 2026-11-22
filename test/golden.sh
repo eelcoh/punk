@@ -31,6 +31,12 @@ trap 'rm -rf "$work"' EXIT
 failed=0
 passed=0
 
+# macOS has no timeout(1); Homebrew's coreutils call it gtimeout.
+if command -v timeout > /dev/null; then limit="timeout 600"
+elif command -v gtimeout > /dev/null; then limit="gtimeout 600"
+else limit=""
+fi
+
 run_case() {
     name=$1 program=$2 stdin=${3:--}
     shift 2; [ $# -gt 0 ] && shift
@@ -40,7 +46,7 @@ run_case() {
     ls "$dir" > "$work/before"
     actual="$work/actual"
     if [ "$stdin" = "-" ]; then input=/dev/null; else input="$golden/input/$stdin"; fi
-    (cd "$dir" && timeout 600 "$roc" "$root/examples/$program" "$@" < "$input" > "$actual" 2> "$work/stderr")
+    (cd "$dir" && $limit "$roc" "$root/examples/$program" "$@" < "$input" > "$actual" 2> "$work/stderr")
     code=$?
     echo "exit $code" >> "$actual"
     # Files the program wrote.

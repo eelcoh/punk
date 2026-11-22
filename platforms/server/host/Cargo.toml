@@ -13,7 +13,7 @@ path = "src/lib.rs"
 
 # ambit is used as a library, pinned to one commit, as in platforms/cli/host.
 [dependencies]
-ambit-caps = { git = "https://github.com/eelcoh/ambit", rev = "b5f977178e408a4aa96c75d7ed073bb2f65be414" }
-ambit-server = { git = "https://github.com/eelcoh/ambit", rev = "b5f977178e408a4aa96c75d7ed073bb2f65be414" }
+ambit-caps = { git = "https://github.com/eelcoh/ambit", rev = "d039ab5afb81fe81faa5ce00c41e937e4879ea85" }
+ambit-server = { git = "https://github.com/eelcoh/ambit", rev = "d039ab5afb81fe81faa5ce00c41e937e4879ea85" }
 punk-roc-abi = { path = "../../roc-abi" }
 tracing = "0.1"

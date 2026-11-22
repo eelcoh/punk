@@ -11,7 +11,7 @@ publish = false
 path = "src/lib.rs"
 
 [dependencies]
-ambit-lockdown = { git = "https://github.com/eelcoh/ambit", rev = "b5f977178e408a4aa96c75d7ed073bb2f65be414" }
+ambit-lockdown = { git = "https://github.com/eelcoh/ambit", rev = "d039ab5afb81fe81faa5ce00c41e937e4879ea85" }
 bytes = "1"
 postgres = { version = "0.19", default-features = false }
 punk-server = { path = "../host" }

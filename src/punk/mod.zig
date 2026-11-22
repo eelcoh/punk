@@ -16,6 +16,10 @@ pub const translate = translate_mod.translate;
 pub const schema = translate_mod.schema;
 pub const SchemaResult = translate_mod.SchemaResult;
 
+/// A type as Roc's compiler shows it, written as in punk (`Try(I64, Str)` is
+/// `Result Int Str`), for error messages.
+pub const punkType = @import("type_text.zig").punkType;
+
 /// `punk fmt`: lays out punkroc source in its one canonical form.
 pub const format = @import("format.zig");
 

@@ -15,4 +15,8 @@ ambit-lockdown = { git = "https://github.com/eelcoh/ambit", rev = "d039ab5afb81f
 bytes = "1"
 postgres = { version = "0.19", default-features = false }
 punk-server = { path = "../host" }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-pki-types = { version = "1.16.0", features = ["std"] }
+tokio-postgres-rustls = "0.14.0"
 tracing = "0.1"
+webpki-roots = "1.0.12"

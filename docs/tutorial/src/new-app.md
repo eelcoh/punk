@@ -21,6 +21,7 @@ notes/
 │   ├── src/lib.rs      which capabilities the app gets
 │   ├── src/main.rs     the settings: database, port
 │   └── tests/spec.rs   tests that send HTTP requests to the app
+├── Dockerfile          the app as a container image
 ├── AGENTS.md           instructions for coding agents
 ├── .claude/skills/     punk's skills for agents
 ├── README.md

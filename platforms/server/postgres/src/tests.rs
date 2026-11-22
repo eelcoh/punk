@@ -364,3 +364,72 @@ fn versions_count_up_from_one() {
     );
     assert_eq!(owner.migrate(V2).unwrap_err().code, "P0405");
 }
+
+/// TLS against `PUNK_TEST_POSTGRES_TLS`: a server with TLS whose certificate is signed by the
+/// authority in `PUNK_TEST_POSTGRES_CA` (a PEM file), for the host name of the URL. Without them
+/// the test says so and passes.
+#[test]
+fn tls_checks_the_servers_certificate() {
+    let (Ok(url), Ok(ca)) = (
+        std::env::var("PUNK_TEST_POSTGRES_TLS"),
+        std::env::var("PUNK_TEST_POSTGRES_CA"),
+    ) else {
+        eprintln!("no PUNK_TEST_POSTGRES_TLS and PUNK_TEST_POSTGRES_CA: skipping tls");
+        return;
+    };
+    let separator = if url.contains('?') { "&" } else { "?" };
+    let with = |options: &str| format!("{url}{separator}{options}");
+    // Whether the connection of a pool (as the app's role, which keeps to row-level security)
+    // has TLS.
+    let ssl = |options: &str| {
+        let tls::Settings { mut config, tls } = tls::settings(&with(options))?;
+        if config.get_dbname().is_none() {
+            let dbname = config.get_user().unwrap_or("postgres").to_owned();
+            config.dbname(&dbname);
+        }
+        config.user(testing::APP_ROLE).password("punk");
+        let db = Postgres::with_tls(config, tls, 1);
+        let rows = db.run(
+            "SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()",
+            &[],
+        )?;
+        Ok::<_, DbError>(rows.rows[0][0].clone())
+    };
+    let setup = Owner::connect(&with(&format!("sslrootcert={ca}"))).unwrap();
+    setup
+        .batch(&format!(
+            "DO $$ BEGIN
+                 CREATE ROLE {} LOGIN PASSWORD 'punk';
+             EXCEPTION WHEN duplicate_object OR unique_violation THEN NULL;
+             END $$;",
+            testing::APP_ROLE
+        ))
+        .unwrap();
+
+    // With the authority that signed it: TLS, also when only preferred.
+    for mode in ["require", "verify-ca", "verify-full", "prefer"] {
+        let got = ssl(&format!("sslmode={mode}&sslrootcert={ca}"));
+        assert_eq!(got.unwrap(), Value::Bool(true), "sslmode={mode}");
+    }
+
+    // With Mozilla's list the test authority is unknown: no connection, and the error says why.
+    for mode in ["require", "prefer"] {
+        let e = ssl(&format!("sslmode={mode}")).unwrap_err();
+        assert_eq!(e.code, "08000");
+        assert!(e.message.contains("sslrootcert"), "{}", e.message);
+        assert!(Owner::connect(&with(&format!("sslmode={mode}"))).is_err());
+    }
+
+    // Without TLS when the connection string says so.
+    assert_eq!(ssl("sslmode=disable").unwrap(), Value::Bool(false));
+}
+
+#[test]
+fn a_schema_without_tables_has_no_versions() {
+    let new_app = include_str!("../../../../tools/new/server/schema.sql");
+    assert_eq!(versions(new_app).unwrap(), vec![]);
+    assert_eq!(
+        versions("CREATE TABLE t (x int);").unwrap_err().code,
+        "P0405"
+    );
+}

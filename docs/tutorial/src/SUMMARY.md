@@ -8,4 +8,5 @@
 - [A new app](new-app.md)
 - [A JSON API for notes](notes-api.md)
 - [A migration](migration.md)
+- [In a container](container.md)
 - [Next steps](next.md)

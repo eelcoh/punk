@@ -28,6 +28,25 @@ Without settings the server uses the database `@app@` on this computer, makes th
 you, and connects as `@crate@_app`. Elsewhere, set `DATABASE_OWNER_URL` (the role that owns the
 tables), `DATABASE_URL` (the app's role, not a superuser) and `PORT`.
 
+## In a container
+
+`Dockerfile` builds the server as one static program on an image with nothing else in it
+(distroless, as a user without rights). The database runs elsewhere: give the container its
+URLs.
+
+```
+docker build -t @app@ .
+docker run --rm -p 8080:8080 \
+    -e DATABASE_OWNER_URL='postgres://owner:...@db.example.com/@app@' \
+    -e DATABASE_URL='postgres://@crate@_app:...@db.example.com/@app@' \
+    @app@
+```
+
+A database that isn't on the same computer gets TLS, and its certificate is checked against
+the authorities browsers trust. Add `sslrootcert=/certs/ca.pem` to the URLs (and
+`-v "$PWD/certs:/certs:ro"`) for a database with a certificate authority of its own, or
+`sslmode=disable` for one on a private network without TLS.
+
 ## Change it
 
 ```

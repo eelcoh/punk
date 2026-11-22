@@ -224,6 +224,17 @@ Lockdown::new().allow(&database) ...                   // its port (and the reso
 let app = punk_server::App::new(clock, random, kv, config).with_database(database);
 ```
 
+**TLS.** The connection string decides, as with libpq: `sslmode=disable`,
+`prefer` or `require` (also `verify-ca` and `verify-full`). Without
+`sslmode` a database on this machine (`localhost`, a loopback address, a
+Unix socket) is `disable` (nothing crosses a network), and any other is
+`require`: a connection over a network is not quietly without TLS. With TLS the server's certificate is
+always checked, for its host name, also with `require` (where libpq checks
+nothing): against Mozilla's list of authorities (built in, so it works in an
+image without `/etc/ssl`), or only the authorities in the PEM file
+`sslrootcert=<file>` names (a cloud's own, or yours). The file is read when
+the pool is made, before the lockdown.
+
 It is a pool of at most `max` connections: a query takes a free one, or
 opens one, or waits up to 5 seconds (then `PgErr { code = "53300" }`). A
 broken connection is dropped and the next query opens a new one, so the app
@@ -318,6 +329,12 @@ Lockdown::new().allow(&mongo) ...                     // its port (and the resol
 let app = punk_server::App::new(clock, random, kv, config).with_documents(mongo);
 ```
 
+**TLS** as the connection string says: `tls=true`, and `tlsCAFile=<file.pem>`
+for an authority of the database's own (`mongodb+srv://` has TLS by itself).
+Without `tls`, a server that isn't on this machine gets TLS anyway; `tls=false`
+says it may go without, for a private network. The certificate is checked
+against Mozilla's list (built in), or only the authorities in `tlsCAFile`.
+
 The driver keeps a pool of connections and reconnects by itself; an
 operation that finds no server within 5 seconds is "6" (set
 `serverSelectionTimeoutMS` in the connection string for another limit).
@@ -394,6 +411,18 @@ Setup (the Rust std for Hermit, QEMU, the loader) as in
 `platforms/cli/hermit/README.md`. Nothing has to be locked down: the image is
 the whole machine, and the only way in is the port.
 
+### As a container
+
+`punk new server` writes a `Dockerfile` next to the app: a build on
+`rust:<version>-slim-trixie` that installs the punk-lang release (checked
+against its SHA256SUMS) and runs `cargo build --release` for
+`<arch>-unknown-linux-musl`, and an image of only that static program on
+`gcr.io/distroless/static-debian12:nonroot` (about 11 MB), with `HOST=0.0.0.0`.
+The database runs elsewhere; the wiring reads `DATABASE_URL` and
+`DATABASE_OWNER_URL`, with TLS as above. `docs/tutorial` (In a container) walks
+through it. `--build-arg PUNK_ARCHIVE=<archive in the folder>` builds with a
+punk that isn't released (from `tools/release/package.sh`).
+
 ## How the host fits together
 
 ```
@@ -422,9 +451,8 @@ shortener checks it too).
 - The query language: grouping a join, filtering groups (`HAVING`), tables shared
   between modules, removing or renaming a whole table in a migration, own types as columns (`type LinkId =
   LinkId Str`), and checking `Sql.query`'s SQL against the tables.
-- TLS to the database (`NoTls` now: for a database on the same machine or a
-  private network), and Postgres on hermit (the `postgres` crate needs
-  tokio, which doesn't run there yet).
+- Postgres on hermit (the `postgres` crate needs tokio, which doesn't run
+  there yet), and certificates for the app itself (`sslcert`, `tlsCertificateKeyFile`).
 - Times, UUIDs, JSON and `numeric` as their own types: convert them in the
   SQL for now.
 

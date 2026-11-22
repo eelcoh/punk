@@ -23,6 +23,7 @@ out=$("$punk" hello/Hello.punk)
 "$punk" new server my-notes
 "$punk" check my-notes/MyNotes.punk
 grep -q 'punk-server = { git = "https://github.com/eelcoh/punk", tag = "' my-notes/server/Cargo.toml
+grep -q "^ARG PUNK_VERSION=$(cat "$work/punk/current/VERSION")\$" my-notes/Dockerfile
 test -f my-notes/.claude/skills/punk-check-loop/SKILL.md
 test -f my-notes/AGENTS.md
 

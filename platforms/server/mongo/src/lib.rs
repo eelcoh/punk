@@ -13,6 +13,11 @@
 //!   no server within 5 seconds (unless the connection string says otherwise) is error "6"
 //!   (HostUnreachable).
 //! - Errors carry Mongo's error code as text: "11000" for a duplicate key.
+//! - TLS as the connection string says (`tls=true`, `tlsCAFile=<file.pem>`; `mongodb+srv://`
+//!   has it by itself), and without `tls` for every server that isn't on this machine: a
+//!   connection over a network is not quietly without TLS (`tls=false` says it may be, for a
+//!   private network). The server's certificate is checked against Mozilla's list (built in),
+//!   or only the authorities in `tlsCAFile`.
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -21,7 +26,7 @@ use ambit_lockdown::{Grant, Grants};
 pub use mongodb::bson;
 use mongodb::bson::{Bson, Document, doc};
 use mongodb::error::{ErrorKind, WriteFailure};
-use mongodb::options::{ClientOptions, ServerAddress};
+use mongodb::options::{ClientOptions, ServerAddress, Tls, TlsOptions};
 use mongodb::sync::{Client, Database};
 use punk_server::{Change, Comparison, DbError, Doc, Documents, Filter, Order, Search};
 
@@ -40,6 +45,7 @@ pub struct Mongo {
     allowed: HashMap<String, Access>,
     hosts: Vec<ServerAddress>,
     srv: bool,
+    tls: bool,
 }
 
 impl Mongo {
@@ -57,7 +63,11 @@ impl Mongo {
             .connect_timeout
             .get_or_insert(Duration::from_secs(5));
         options.app_name.get_or_insert_with(|| "punk".to_owned());
+        if options.tls.is_none() && !options.hosts.iter().all(is_local) {
+            options.tls = Some(Tls::Enabled(TlsOptions::default()));
+        }
         let srv = uri.starts_with("mongodb+srv://");
+        let tls = srv || matches!(options.tls, Some(Tls::Enabled(_)));
         let hosts = options.hosts.clone();
         let client = Client::with_options(options).map_err(mongo_error)?;
         Ok(Self {
@@ -65,7 +75,13 @@ impl Mongo {
             allowed: HashMap::new(),
             hosts,
             srv,
+            tls,
         })
+    }
+
+    /// Whether the connection has TLS (the wiring logs it).
+    pub fn tls(&self) -> bool {
+        self.tls
     }
 
     /// Lets the app use the collection, to read or also to change.
@@ -395,3 +411,18 @@ pub mod testing {
 
 #[cfg(test)]
 mod tests;
+
+/// Whether the server is this machine: `localhost`, a loopback address or a Unix socket.
+fn is_local(address: &ServerAddress) -> bool {
+    match address {
+        ServerAddress::Tcp { host, .. } => {
+            host == "localhost"
+                || host
+                    .trim_start_matches('[')
+                    .trim_end_matches(']')
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|ip| ip.is_loopback())
+        }
+        _ => true,
+    }
+}

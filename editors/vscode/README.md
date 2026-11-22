@@ -17,7 +17,7 @@ Support for [punk-lang](https://github.com/eelcoh/punk) (`.punk` files):
 
 ## Install
 
-Until it is on the Marketplace, install it from this folder:
+Each release carries `punk-lang-<version>.vsix` (`code --install-extension` it), and publishes it on the Marketplace when the repository has the secret `VSCE_PAT`. Or build it from this folder:
 
 ```
 cd editors/vscode

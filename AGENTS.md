@@ -6,6 +6,9 @@ platforms with Rust hosts on ambit. Read `README.md` first, and
 
 ## Rules
 
+- Write English on GitHub: commit messages, issues, pull requests, review
+  comments, and the code, comments and docs in this repository. (Chat with
+  Eelco may be in Dutch; nothing of that goes into the repository.)
 - Never push, open PRs, issues or comments on upstream Roc (roc-lang/roc).
   Roc changes go to eelcoh/roc's `punkroc` branch only.
 - Default for language design questions: do what Elm does. Prefer pipelines

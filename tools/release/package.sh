@@ -7,7 +7,8 @@
 #
 # The archive holds, under punk-<version>-<os>-<arch>/:
 #
-#   bin/punk                    the compiler
+#   bin/punk                    the command: `punk new`, else the compiler
+#   libexec/punk                the compiler
 #   platforms/cli/              the cli platform: its API and its prebuilt host
 #                               (targets/<target>/), so cli apps need no Rust
 #   platforms/server/, tui/     their API; their hosts still build with cargo,
@@ -16,6 +17,8 @@
 #   share/punk/llms.txt         the language reference for agents
 #   share/punk/skills/          agent skills per task (skills/), when there are
 #   share/punk/templates/       an AGENTS.md per platform (templates/), when there are
+#   share/punk/new/             `punk new` (tools/new/), with the ambit commit
+#                               and Rust toolchain the platforms use
 #   README.md, VERSION
 set -eu
 
@@ -38,9 +41,15 @@ ls platforms/cli/targets/*/libhost.a > /dev/null 2>&1 || { echo "package.sh: run
 
 stage="dist/$name"
 rm -rf "$stage" "dist/$name.tar.gz"
-mkdir -p "$stage/bin" "$stage/share/punk" "$stage/platforms" "$stage/packages"
+mkdir -p "$stage/bin" "$stage/libexec" "$stage/share/punk" "$stage/platforms" "$stage/packages"
 
-cp zig-out/bin/punk "$stage/bin/punk"
+cp zig-out/bin/punk "$stage/libexec/punk"
+cp tools/release/punk.sh "$stage/bin/punk"
+chmod +x "$stage/bin/punk"
+cp -R tools/new "$stage/share/punk/new"
+sed -n 's/^ambit-caps = .*rev = "\([0-9a-f]*\)".*/\1/p' platforms/server/host/Cargo.toml > "$stage/share/punk/new/ambit-rev"
+test -s "$stage/share/punk/new/ambit-rev" || { echo "package.sh: no ambit rev in platforms/server/host/Cargo.toml"; exit 1; }
+cp platforms/server/host/rust-toolchain.toml "$stage/share/punk/new/rust-toolchain.toml"
 cp src/punk/llms.txt "$stage/share/punk/llms.txt"
 for d in skills templates; do
     if [ -d "$d" ]; then cp -R "$d" "$stage/share/punk/$d"; fi

@@ -1,0 +1,33 @@
+[package]
+name = "@app@"
+description = "The server of @App@.punk, on punk's server platform, with Postgres."
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# `build.rs` compiles ../@App@.punk with `punk build`.
+[lib]
+name = "@crate@"
+path = "src/lib.rs"
+
+[[bin]]
+name = "@app@"
+path = "src/main.rs"
+
+# punk's server platform, and ambit at the commit that platform uses.
+[dependencies]
+ambit-caps = { @ambit@ }
+ambit-lockdown = { @ambit@ }
+ambit-server = { @ambit@ }
+ambit-server-native = { @ambit@ }
+punk-server = { @punk:platforms/server/host@ }
+punk-server-postgres = { @punk:platforms/server/postgres@ }
+tracing = "0.1"
+
+[dev-dependencies]
+ambit-server-sim = { @ambit@ }
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true

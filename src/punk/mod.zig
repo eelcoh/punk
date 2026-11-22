@@ -27,6 +27,8 @@ pub const format = @import("format.zig");
 /// The relative path from the folder of an app to `platforms_dir/name/main.roc`
 /// (`platform "cli"`, src/punk/platforms.zig).
 pub const platformSpec = platforms.relativeSpec;
+/// Whether a name in the app header is a platform or a package.
+pub const NameKind = platforms.Kind;
 
 /// The file extension of punkroc source files.
 pub const extension = ".punk";
@@ -49,7 +51,7 @@ pub const Reader = struct {
     /// at `app_path`: the relative path to the `main.roc` of the platform of
     /// that name that came with the compiler, null when there is none. Null
     /// (the function) leaves names as they are (src/punk/platforms.zig).
-    platform: ?*const fn (ctx: ?*anyopaque, allocator: std.mem.Allocator, app_path: []const u8, name: []const u8) ?[]const u8 = null,
+    platform: ?*const fn (ctx: ?*anyopaque, allocator: std.mem.Allocator, app_path: []const u8, kind: NameKind, name: []const u8) ?[]const u8 = null,
 };
 
 /// Finds the directory of URL packages for `Reader.packageDir`.
@@ -119,13 +121,17 @@ pub fn toRocWith(allocator: std.mem.Allocator, path: []const u8, src_in: []const
         load_ctx = .{ .reader = r, .dir = std.fs.path.dirname(path) orelse "." };
         resolver = .{ .ctx = &load_ctx, .load = load, .schema = loadSchema };
     }
-    // `platform "cli"`: the platform of that name that came with punk.
+    // `platform "cli"`, `Json: "json"`: the platform or package of that name
+    // that came with punk.
     var src = src_in;
     if (reader) |r| {
         if (r.platform) |find| {
             const found = try platforms.resolve(arena.allocator(), src, path, .{ .ctx = r.ctx, .find = find });
             if (found.unknown) |u| {
-                const msg = try std.fmt.allocPrint(arena.allocator(), "{s}:{d}:{d}: there is no platform named \"{s}\" next to this punk (it has cli, server and tui); give a name of one of those, or a path to a platform's main.roc", .{ path, u.line, u.col, u.name });
+                const msg = switch (u.kind) {
+                    .platform => try std.fmt.allocPrint(arena.allocator(), "{s}:{d}:{d}: there is no platform named \"{s}\" next to this punk (it has cli, server and tui); give a name of one of those, or a path to a platform's main.roc", .{ path, u.line, u.col, u.name }),
+                    .package => try std.fmt.allocPrint(arena.allocator(), "{s}:{d}:{d}: there is no package named \"{s}\" next to this punk (it has json); give that name, or a path to a package's main.roc", .{ path, u.line, u.col, u.name }),
+                };
                 syntax_errors.set(path, msg);
                 source_maps.set(path, src, "", &.{});
                 return error.ParseError;

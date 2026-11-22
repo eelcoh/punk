@@ -1,0 +1,32 @@
+[package]
+name = "@app@"
+description = "@App@.punk as a terminal app, on punk's tui platform."
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# `build.rs` compiles ../@App@.punk with `punk build`.
+[lib]
+name = "@crate@"
+path = "src/lib.rs"
+
+[[bin]]
+name = "@app@"
+path = "src/main.rs"
+
+# punk's tui platform, and ambit at the commit that platform uses.
+[dependencies]
+ambit-caps = { @ambit@ }
+ambit-caps-native = { @ambit@ }
+ambit-tui-native = { @ambit@ }
+punk-tui = { @punk:platforms/tui/host@ }
+
+[dev-dependencies]
+ambit-caps-sim = { @ambit@ }
+ambit-tui = { @ambit@ }
+ambit-tui-sim = { @ambit@ }
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true

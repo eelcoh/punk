@@ -6,38 +6,23 @@ decoders) and is compiled by the Roc compiler, on platforms whose hosts are
 written in Rust. Most punk is written by agents and read by people, so it
 aims for one thing: if it compiles, it runs.
 
-## Install
+## What you'll build
 
-On macOS or Linux:
+This tutorial starts from a Mac with nothing on it and ends with a JSON API
+for notes, with its notes in Postgres:
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/eelcoh/punk/main/install.sh | sh
-```
+1. [Install](install.md) punk, the VS Code extension, Rust and Postgres.
+2. [Make a new app](new-app.md) with `punk new`: a git repository with the
+   app, the server that runs it, and the instructions and skills for coding
+   agents.
+3. [Write the API](notes-api.md): a table, queries, JSON decoders and
+   encoders, and routes.
+4. [Change the table](migration.md) and let the server migrate the
+   database.
 
-This puts `punk` in `~/.local/bin` and its platforms next to it.
+It takes about half an hour, most of it waiting for downloads.
 
-For VS Code, install the extension `punk-lang`: highlighting, `punk fmt` on
-save, and the compiler's problems in the editor.
-
-## Hello
-
-```elm
-app [main!] { Platform: platform "cli" }
-
-import Platform.Stdout
-
-main! = fn () ->
-    Stdout.line! "Hello"
-```
-
-```sh
-punk hello.punk          # build and run
-punk fmt hello.punk      # lay it out
-punk check hello.punk    # type-check only
-```
-
-`platform "cli"` picks one of the platforms that come with punk: `cli` for
-command-line programs, `server` for HTTP servers, `tui` for terminal apps.
-
-Every page of this tutorial is built from programs in the punk repository
-that its tests run, so the code here compiles.
+Every program in this tutorial is in the punk repository
+([`examples/tutorial`](https://github.com/eelcoh/punk/tree/main/examples/tutorial)),
+and its tests run them against a real Postgres, so the code here compiles
+and works.

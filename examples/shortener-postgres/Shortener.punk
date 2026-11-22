@@ -1,4 +1,4 @@
-app [handle!] { Platform: platform "server", Json: "../../packages/json/main.roc" }
+app [handle!] { Platform: platform "server", Json: "json" }
 
 import Platform.Http exposing [Request, Response]
 import Platform.Clock

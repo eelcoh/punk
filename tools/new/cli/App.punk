@@ -1,0 +1,16 @@
+app [main!] { Platform: platform "cli" }
+
+import Platform.Stdout
+
+{-| @App@: a punk-lang program. Run it with `punk @App@.punk`.
+-}
+
+main! : () => {}
+main! = fn () ->
+    Stdout.line! (greeting "world")
+
+greeting : Str -> Str
+greeting = fn name ->
+    "Hello, ${name}!"
+
+expect greeting "punk" == "Hello, punk!"

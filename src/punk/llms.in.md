@@ -17,6 +17,7 @@ The `punk` command is the Roc compiler (`zig-out/bin/punk`, also `roc`).
 | `punk fmt app.punk ...` | Lay files out in the one canonical form. `--check` only lists files that are not formatted. |
 | `punk app.punk [args]` | Build and run the app. |
 | `punk test app.punk` | Run the `expect` tests in the file. |
+| `punk new server notes` | A new app (`cli`, `server` or `tui`) in the folder `notes`, with its `AGENTS.md` and the skills. Only an installed punk has it. |
 
 Work in this loop: write the file, `punk fmt` it, `punk check --json` it, fix
 the first problem, repeat; then run it. Fix problems from the top: a later one
@@ -34,8 +35,9 @@ main! = fn () ->
 ```
 
 `platform "cli"` names one of the platforms that come with punk: `cli`,
-`server` or `tui`. (A path to a platform's `main.roc`, relative to the
-`.punk` file, works too.) A file is an `app`
+`server` or `tui`. In the same way `Json: "json"` names a package that comes
+with punk (now only `json`). (A path to a platform's or package's `main.roc`,
+relative to the `.punk` file, works too.) A file is an `app`
 (it has `main!`) or a `module` (see "Modules").
 
 ## Syntax
@@ -372,7 +374,7 @@ as D`. All examples use it; lowercase `pf` and `json` keep working.
 is one function, called for every request:
 
 ```
-app [handle!] { Platform: platform "server", Json: "packages/json/main.roc" }
+app [handle!] { Platform: platform "server", Json: "json" }
 
 import Platform.Http exposing [Request, Response]
 
@@ -670,8 +672,8 @@ Doc.list, Doc.nullable, Doc.map ... Doc.map5, Doc.andThen, Doc.oneOf, Doc.succee
 ### JSON: the `json` package
 
 Elm's `Json.Decode` and `Json.Encode`, as the modules `Decode` and `Encode`
-of the package `packages/json` (add `json: "packages/json/main.roc"` to the
-app header, relative to your file):
+of the package `json` that comes with punk (add `Json: "json"` to the app
+header):
 
 ```
 import Json.Decode as D

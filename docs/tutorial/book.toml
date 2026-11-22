@@ -1,0 +1,12 @@
+[book]
+title = "punk-lang"
+description = "A tutorial for punk-lang: Elm's syntax and habits, for real applications."
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+
+[output.html]
+git-repository-url = "https://github.com/eelcoh/punk"
+edit-url-template = "https://github.com/eelcoh/punk/edit/main/docs/tutorial/{path}"

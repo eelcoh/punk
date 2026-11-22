@@ -66,6 +66,7 @@ zig-out/bin/punk fmt examples/elm.punk
 | `packages/json` | Elm-style `Json.Decode` / `Json.Encode` |
 | `examples/` | example apps, and the golden tests' programs |
 | `skills/`, `templates/` | agent skills per task (`SKILL.md`), and an `AGENTS.md` per platform for new apps |
+| `docs/tutorial/` | the tutorial (mdBook; its code is included from `examples/`) |
 | `editors/vscode/` | the VS Code extension ([README](editors/vscode/README.md)) |
 | `install.sh`, `tools/release/` | installing a release, and packing one |
 | `test/` | golden tests, setup of the hosts, everything CI runs (`test/ci.sh`) |

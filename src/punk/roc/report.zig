@@ -96,7 +96,54 @@ fn elementMentionsPunk(el: DocumentElement) bool {
 }
 
 fn remapDocument(doc: *Document) Allocator.Error!void {
+    try punkTypes(doc);
     for (doc.elements.items) |*el| try remapElement(doc, el);
+}
+
+/// Writes every type the report shows (a code block of its own, as in
+/// "It has the type:") the way punk writes it.
+fn punkTypes(doc: *Document) Allocator.Error!void {
+    var i: usize = 0;
+    while (i < doc.elements.items.len) : (i += 1) {
+        const start = doc.elements.items[i];
+        if (start != .annotation_start or start.annotation_start != .code_block) continue;
+        var end = i + 1;
+        while (end < doc.elements.items.len and doc.elements.items[end] != .annotation_end) end += 1;
+        if (end == doc.elements.items.len) return;
+
+        // The block is lines of `indent`, `text`, separated by line breaks.
+        var text: std.ArrayList(u8) = .empty;
+        defer text.deinit(doc.allocator);
+        var plain = true;
+        for (doc.elements.items[i + 1 .. end]) |el| switch (el) {
+            .text => |t| try text.appendSlice(doc.allocator, t),
+            .line_break => try text.append(doc.allocator, '\n'),
+            .indent => {},
+            else => plain = false,
+        };
+        if (!plain) {
+            i = end;
+            continue;
+        }
+        const converted = (try punk.punkType(doc.allocator, text.items)) orelse {
+            i = end;
+            continue;
+        };
+        defer doc.allocator.free(converted);
+
+        var elements: std.ArrayList(DocumentElement) = .empty;
+        defer elements.deinit(doc.allocator);
+        var lines = std.mem.splitScalar(u8, converted, '\n');
+        var first = true;
+        while (lines.next()) |line| {
+            if (!first) try elements.append(doc.allocator, .line_break);
+            first = false;
+            try elements.append(doc.allocator, .{ .indent = 1 });
+            try elements.append(doc.allocator, .{ .text = try doc.ownString(line) });
+        }
+        try doc.elements.replaceRange(i + 1, end - i - 1, elements.items);
+        i += elements.items.len + 1;
+    }
 }
 
 fn isPunk(filename: ?[]const u8) ?[]const u8 {
@@ -179,6 +226,9 @@ fn remapElement(doc: *Document, el: *DocumentElement) Allocator.Error!void {
         },
         .annotated => |a| if (a.annotation == .path) {
             if (vfs.virtualPunk(a.content)) |p| el.* = .{ .annotated = .{ .content = p, .annotation = a.annotation } };
+        } else if (std.mem.eql(u8, a.content, ".to_str()")) {
+            // Roc's method call; punk converts with a function.
+            el.* = .{ .annotated = .{ .content = "String.fromInt (or String.fromFloat)", .annotation = a.annotation } };
         } else if (try camel(doc, a.content)) |c| {
             el.* = .{ .annotated = .{ .content = c, .annotation = a.annotation } };
         },

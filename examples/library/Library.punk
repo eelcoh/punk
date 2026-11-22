@@ -1,7 +1,8 @@
 app [Model, Msg, main] { Platform: platform "tui", Json: "../../packages/json/main.roc" }
 
-import Platform.Tui exposing [Event]
+import Platform.Tui
 import Platform.Cmd
+import Platform.Sub
 import Platform.View
 import Platform.File
 import Json.Decode as D
@@ -25,7 +26,7 @@ Marked books stay marked when a search hides them.
 -}
 
 main =
-    { init = init, update = update, view = view }
+    { init = init, update = update, view = view, subscriptions = subscriptions }
 
 -- MODEL
 
@@ -73,11 +74,14 @@ init =
 
 type Msg
     = Loaded (Result Str Str)
+    | Pressed Tui.Key
+    | Pasted Str
+    | Resized Int Int
 
-update : Event Msg -> Model -> (Model, Cmd Msg)
-update = fn event, model ->
-    case event of
-        Msg (Loaded (Ok text)) ->
+update : Msg -> Model -> (Model, Cmd Msg)
+update = fn msg, model ->
+    case msg of
+        Loaded (Ok text) ->
             case D.decodeString (D.list book) text of
                 Ok books ->
                     (keepSelection model (sortBooks model.sort books), Cmd.none)
@@ -85,23 +89,27 @@ update = fn event, model ->
                 Err problem ->
                     ({ model | status = "The library can't be read: ${D.errorToString problem}" }, Cmd.none)
 
-        Msg (Loaded (Err why)) ->
+        Loaded (Err why) ->
             ({ model | status = "The library can't be read: ${why}" }, Cmd.none)
 
-        Resize width _ ->
+        Resized width _ ->
             ({ model | width = width }, Cmd.none)
 
-        Paste text ->
+        Pasted text ->
             if model.searching then
                 (search (model.query ++ text) model, Cmd.none)
             else
                 (model, Cmd.none)
 
-        Key key ->
+        Pressed key ->
             if model.searching then
                 searchKey key model
             else
                 listKey key model
+
+subscriptions : Model -> Sub Msg
+subscriptions = fn _ ->
+    Sub.batch [Sub.onKey Pressed, Sub.onPaste Pasted, Sub.onResize Resized]
 
 listKey : Tui.Key -> Model -> (Model, Cmd Msg)
 listKey = fn key, model ->

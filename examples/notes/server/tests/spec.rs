@@ -204,6 +204,50 @@ fn public_notes_come_with_the_names_of_their_writers() {
 }
 
 #[test]
+fn a_left_join_keeps_the_notes_of_writers_without_a_name() {
+    let Some((app, _, _)) = setup("left_join") else {
+        return;
+    };
+    assert_eq!(send(&app, by(Some("ann"), "PUT", "/me", "Ann")).0, StatusCode::CREATED);
+    let publish = |user: &str, text: &str| {
+        let id = add(&app, user, text);
+        let req = by(Some(user), "POST", &format!("/notes/{id}/publish"), "");
+        assert_eq!(send(&app, req).0, StatusCode::OK);
+    };
+    publish("ann", "a1");
+    publish("carl", "c1");
+    add(&app, "carl", "secret");
+    let (status, body) = send(&app, by(None, "GET", "/public/all", ""));
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, "Ann: a1\n?: c1\n");
+}
+
+#[test]
+fn writers_are_grouped_with_a_count() {
+    let Some((app, _, _)) = setup("group_by") else {
+        return;
+    };
+    let publish = |user: &str, text: &str| {
+        let id = add(&app, user, text);
+        let req = by(Some(user), "POST", &format!("/notes/{id}/publish"), "");
+        assert_eq!(send(&app, req).0, StatusCode::OK);
+    };
+    publish("bob", "b2");
+    publish("ann", "a2");
+    publish("ann", "a1");
+    publish("bob", "b1");
+    publish("bob", "b3");
+    // Not public: not counted.
+    add(&app, "ann", "a0");
+    let (status, body) = send(&app, by(None, "GET", "/writers", ""));
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, "ann 2 a1\nbob 3 b1\n");
+    // Ann reads her private note too, but it is not public, so not counted.
+    let (_, body) = send(&app, by(Some("ann"), "GET", "/writers", ""));
+    assert_eq!(body, "ann 2 a1\nbob 3 b1\n");
+}
+
+#[test]
 fn one_pinned_note_per_user_in_a_transaction() {
     let Some((app, _, _)) = setup("pin_one") else {
         return;

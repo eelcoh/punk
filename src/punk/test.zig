@@ -52,6 +52,55 @@ test "snake case" {
     try std.testing.expectEqualStrings("line!", try punk.snake(a, "line!"));
 }
 
+test "types in error messages are written as in punk" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const cases = [_][2][]const u8{
+        .{ "Try(I64, Str)", "Result Int Str" },
+        .{ "List(List(F64))", "List (List Float)" },
+        .{ "{ age: I64, name: Str }", "{ age : Int, name : Str }" },
+        .{ "{ name: Str, ..a }", "{ a | name : Str }" },
+        .{ "[Just(I64), Nothing]", "Maybe Int" },
+        .{ "List([Just(Str), Nothing])", "List (Maybe Str)" },
+        .{ "[Circle(F64), Rect(F64, F64)]", "(Circle Float | Rect Float Float)" },
+        .{ "[Red, ..others]", "(Red | ..others)" },
+        .{ "[LT, EQ, GT]", "Order" },
+        .{ "I64, I64 -> I64", "Int, Int -> Int" },
+        .{ "List(a), (a -> Bool) -> List(a)", "List a, (a -> Bool) -> List a" },
+        .{ "Str => Try({}, [Exit(I32)])", "Str => Result {} (Exit I32)" },
+        .{ "(Str, I64)", "(Str, Int)" },
+        .{ "Dict(_k, _v)", "Dict _k _v" },
+        .{ "List(List(a)) where [a.from_quote : Str -> Try(a, [BadQuotedBytes(Str)])]", "List (List Str)" },
+        .{
+            \\{ age: a, name: b }
+            \\  where [
+            \\    a.from_numeral : Numeral -> Try(a, [InvalidNumeral(Str)]),
+            \\    b.from_quote : Str -> Try(b, [BadQuotedBytes(Str)]),
+            \\  ]
+            ,
+            "{ age : number, name : Str }",
+        },
+        .{
+            \\a -> a
+            \\  where [
+            \\    a.fromNumeral : Numeral -> Try(a, [InvalidNumeral(Str)]),
+            \\    a.plus : a, a -> a,
+            \\  ]
+            ,
+            "number -> number",
+        },
+        .{ "a -> Str where [a.to_str : a -> Str]", "a -> Str where a.toStr : a -> Str" },
+    };
+    for (cases) |c| {
+        const got = (try mod.punkType(a, c[0])) orelse c[0];
+        try std.testing.expectEqualStrings(c[1], got);
+    }
+    // Nothing to change, or not a type.
+    try std.testing.expectEqual(null, try mod.punkType(a, "Str"));
+    try std.testing.expectEqual(null, try mod.punkType(a, "this is ( not a type"));
+}
+
 test "equality takes records and tuples apart" {
     try check(
         \\type alias Entry = { key : Str, tree : Tree }
@@ -1970,6 +2019,69 @@ test "queries: a join is one SQL statement" {
         \\q = |min| Db.all_rows([Db.param_text(min)], "SELECT t0.url AS url, t1.name AS name FROM links t0 JOIN users t1 ON t0.owner = t1.id WHERE t1.active AND t1.name > $1 ORDER BY t0.url ASC", Db.field(Db.read_text, "url", |punk_c1| Db.field(Db.read_text, "name", |punk_c2| Db.done({ url: punk_c1, name: punk_c2 }))))
         \\
     , out[start..]);
+}
+
+fn queryOut(src: []const u8) ![]const u8 {
+    const a = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(a);
+    defer arena.deinit();
+    var diag: punk.Diagnostic = .{};
+    const out = punk.translate(arena.allocator(), src, &diag) catch |err| {
+        std.debug.print("error at {d}:{d}: {s}\n", .{ diag.line, diag.col, diag.message });
+        return err;
+    };
+    const start = std.mem.find(u8, out, "q = ").?;
+    return a.dupe(u8, out[start..]);
+}
+
+test "queries: a left join gives the other row as a Maybe" {
+    const out = try queryOut(join_head ++
+        \\q = links
+        \\    |> Db.leftJoin users (fn link, user -> link.owner == user.id)
+        \\    |> Db.filter (fn _, user -> user == Nothing)
+        \\    |> Db.map (fn link, user -> { url = link.url, name = Maybe.map .name user })
+        \\    |> Db.all
+        \\
+    );
+    defer std.testing.allocator.free(out);
+    try std.testing.expectEqualStrings(
+        \\q = Db.all_rows([], "SELECT t0.url AS url, t1.name AS name FROM links t0 LEFT JOIN users t1 ON t0.owner = t1.id WHERE t1.id IS NULL", Db.field(Db.read_text, "url", |punk_c1| Db.field(Db.read_nullable(Db.read_text), "name", |punk_c2| Db.done({ url: punk_c1, name: punk_c2 }))))
+        \\
+    , out);
+}
+
+test "queries: groupBy with count, sum, min, max and avg" {
+    const out = try queryOut(join_head ++
+        \\q = fn host ->
+        \\    links
+        \\        |> Db.filter (fn link -> link.url /= host)
+        \\        |> Db.groupBy .owner
+        \\        |> Db.sortByDescending (fn _, rows -> Db.count rows)
+        \\        |> Db.map (fn owner, rows -> { owner, n = Db.count rows, first = Db.min .url rows })
+        \\        |> Db.all
+        \\
+    );
+    defer std.testing.allocator.free(out);
+    try std.testing.expectEqualStrings(
+        \\q = |host| Db.all_rows([Db.param_text(host)], "SELECT owner, COUNT(*) AS n, MIN(url) AS first FROM links WHERE url <> $1 GROUP BY owner ORDER BY COUNT(*) DESC", Db.field(Db.read_text, "owner", |punk_c1| Db.field(Db.read_int, "n", |punk_c2| Db.field(Db.read_text, "first", |punk_c3| Db.done({ owner: punk_c1, n: punk_c2, first: punk_c3 })))))
+        \\
+    , out);
+}
+
+test "rules: leftJoin and groupBy (P402, P403)" {
+    const head = join_head;
+    // The row of a leftJoin is a Maybe.
+    try checkRule(head ++ "q = links |> Db.leftJoin users (fn l, u -> l.owner == u.id) |> Db.map (fn l, u -> { url = l.url, name = u.name }) |> Db.all\n", 31, 107, .query_type);
+    // A Maybe column takes Maybe.andThen.
+    try checkRule(head ++ "q = links |> Db.leftJoin links (fn l, m -> l.owner == m.id) |> Db.map (fn l, m -> Maybe.andThen .url m) |> Db.all\n", 31, 98, .query_type);
+    // An aggregate outside a groupBy.
+    try checkRule(head ++ "q = links |> Db.map (fn l -> Db.count l) |> Db.all\n", 31, 30, .not_in_database);
+    // groupBy needs a map, and works on one table.
+    try checkRule(head ++ "q = links |> Db.groupBy .owner |> Db.all\n", 31, 35, .not_in_database);
+    try checkRule(head ++ "q = links |> Db.join users (fn l, u -> l.owner == u.id) |> Db.groupBy (fn l, _ -> l.owner) |> Db.map (fn o, rows -> o) |> Db.all\n", 31, 60, .not_in_database);
+    // Sum adds numbers; the rows go in an aggregate.
+    try checkRule(head ++ "q = links |> Db.groupBy .owner |> Db.map (fn o, rows -> { o, s = Db.sum .url rows }) |> Db.all\n", 31, 74, .query_type);
+    try checkRule(head ++ "q = links |> Db.groupBy .owner |> Db.map (fn o, rows -> rows) |> Db.all\n", 31, 57, .not_in_database);
 }
 
 test "rules: sorting and joins (P402, P403)" {

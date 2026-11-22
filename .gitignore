@@ -9,3 +9,5 @@ target
 *.o
 # The tutorial, built by mdBook (docs/tutorial).
 docs/tutorial/book
+# Release archives (tools/release/package.sh).
+dist

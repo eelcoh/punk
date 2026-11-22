@@ -1,0 +1,252 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "punk",
+  "scopeName": "source.punk",
+  "fileTypes": ["punk"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#header" },
+    { "include": "#import" },
+    { "include": "#type-declaration" },
+    { "include": "#table-declaration" },
+    { "include": "#annotation" },
+    { "include": "#expression" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.block.documentation.punk",
+          "begin": "\\{-\\|",
+          "end": "-\\}",
+          "captures": { "0": { "name": "punctuation.definition.comment.punk" } },
+          "patterns": [{ "include": "#block-comment-nested" }]
+        },
+        {
+          "name": "comment.block.punk",
+          "begin": "\\{-",
+          "end": "-\\}",
+          "captures": { "0": { "name": "punctuation.definition.comment.punk" } },
+          "patterns": [{ "include": "#block-comment-nested" }]
+        },
+        {
+          "name": "comment.line.double-dash.punk",
+          "begin": "--",
+          "end": "$",
+          "beginCaptures": { "0": { "name": "punctuation.definition.comment.punk" } }
+        }
+      ]
+    },
+    "block-comment-nested": {
+      "begin": "\\{-",
+      "end": "-\\}",
+      "patterns": [{ "include": "#block-comment-nested" }]
+    },
+    "header": {
+      "name": "meta.header.punk",
+      "begin": "^(app|module|package|platform|hosted)\\b",
+      "beginCaptures": { "1": { "name": "keyword.other.header.punk" } },
+      "end": "^(?=\\S)",
+      "patterns": [
+        { "include": "#comments" },
+        { "match": "\\bplatform\\b", "name": "keyword.other.header.punk" },
+        { "include": "#string" },
+        { "include": "#module-name" },
+        { "include": "#effect-name" },
+        { "include": "#lower-name" },
+        { "include": "#punctuation" }
+      ]
+    },
+    "import": {
+      "name": "meta.import.punk",
+      "begin": "^(import)\\b",
+      "beginCaptures": { "1": { "name": "keyword.control.import.punk" } },
+      "end": "$",
+      "patterns": [
+        { "include": "#comments" },
+        { "match": "\\b(as|exposing)\\b", "name": "keyword.control.import.punk" },
+        { "match": "\\.\\.", "name": "keyword.operator.punk" },
+        { "include": "#module-name" },
+        { "include": "#effect-name" },
+        { "include": "#lower-name" },
+        { "include": "#punctuation" }
+      ]
+    },
+    "type-declaration": {
+      "patterns": [
+        {
+          "match": "^(type)\\s+(alias)\\s+([A-Z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.other.type.punk" },
+            "2": { "name": "keyword.other.type.punk" },
+            "3": { "name": "entity.name.type.punk" }
+          }
+        },
+        {
+          "match": "^(type)\\s+([A-Z][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.other.type.punk" },
+            "2": { "name": "entity.name.type.punk" }
+          }
+        }
+      ]
+    },
+    "table-declaration": {
+      "comment": "A query-language table: `table links : Link`, then indented `key`, `read`, `insert`, `update`, `delete` lines.",
+      "name": "meta.table.punk",
+      "begin": "^(table)\\s+([a-z][A-Za-z0-9_]*)",
+      "beginCaptures": {
+        "1": { "name": "keyword.other.table.punk" },
+        "2": { "name": "entity.name.table.punk" }
+      },
+      "end": "^(?=\\S)",
+      "patterns": [
+        { "include": "#comments" },
+        { "match": "^\\s+(key|read|insert|update|delete)\\b", "captures": { "1": { "name": "keyword.other.table.punk" } } },
+        { "match": "\\b(everyone|nobody)\\b", "name": "constant.language.policy.punk" },
+        { "include": "#expression" }
+      ]
+    },
+    "annotation": {
+      "match": "^([a-z][A-Za-z0-9_]*!?)\\s*(:)(?!:)",
+      "captures": {
+        "1": { "name": "entity.name.function.punk" },
+        "2": { "name": "keyword.other.colon.punk" }
+      }
+    },
+    "expression": {
+      "patterns": [
+        { "include": "#comments" },
+        { "include": "#string" },
+        { "include": "#char" },
+        { "include": "#number" },
+        { "include": "#definition" },
+        { "include": "#keywords" },
+        { "include": "#operators" },
+        { "include": "#accessor" },
+        { "include": "#qualified" },
+        { "include": "#constructor" },
+        { "include": "#effect-name" },
+        { "include": "#lower-name" },
+        { "include": "#punctuation" }
+      ]
+    },
+    "definition": {
+      "match": "^([a-z][A-Za-z0-9_]*!?)(?=\\s*=(?!=))",
+      "captures": { "1": { "name": "entity.name.function.punk" } }
+    },
+    "keywords": {
+      "patterns": [
+        { "match": "\\b(if|then|else|case|of)\\b", "name": "keyword.control.conditional.punk" },
+        { "match": "\\b(fold|in|into|with)\\b", "name": "keyword.control.loop.punk" },
+        { "match": "\\b(try|return|crash)\\b", "name": "keyword.control.flow.punk" },
+        { "match": "\\bfn\\b", "name": "keyword.other.function.punk" },
+        { "match": "\\b(type|alias|as|exposing|import)\\b", "name": "keyword.other.punk" },
+        { "match": "\\b(expect|dbg)\\b", "name": "keyword.other.debug.punk" },
+        { "match": "\\b(not|and|or)\\b", "name": "keyword.operator.word.punk" },
+        { "match": "\\b(var|for|while)\\b", "name": "invalid.deprecated.punk" }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        { "match": "->|=>", "name": "keyword.operator.arrow.punk" },
+        { "match": "\\|>|<\\|", "name": "keyword.operator.pipe.punk" },
+        { "match": "==|/=|!=|<=|>=|<|>", "name": "keyword.operator.comparison.punk" },
+        { "match": "&&|\\|\\|", "name": "keyword.operator.logical.punk" },
+        { "match": "\\+\\+|//|\\?\\?|::|\\.\\.=|\\.\\.<|[+\\-*/%^]", "name": "keyword.operator.punk" },
+        { "match": "=", "name": "keyword.operator.assignment.punk" },
+        { "match": "\\|", "name": "keyword.operator.bar.punk" },
+        { "match": ":", "name": "keyword.other.colon.punk" }
+      ]
+    },
+    "string": {
+      "patterns": [
+        {
+          "name": "string.quoted.triple.punk",
+          "begin": "\"\"\"",
+          "end": "\"\"\"",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.punk" } },
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.punk" } },
+          "patterns": [{ "include": "#string-escape" }, { "include": "#interpolation" }]
+        },
+        {
+          "name": "string.quoted.double.punk",
+          "begin": "\"",
+          "end": "\"|$",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.punk" } },
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.punk" } },
+          "patterns": [{ "include": "#string-escape" }, { "include": "#interpolation" }]
+        }
+      ]
+    },
+    "string-escape": {
+      "match": "\\\\(?:u\\([0-9A-Fa-f]+\\)|.)",
+      "name": "constant.character.escape.punk"
+    },
+    "interpolation": {
+      "name": "meta.embedded.interpolation.punk",
+      "begin": "\\$\\{",
+      "end": "\\}",
+      "beginCaptures": { "0": { "name": "punctuation.section.interpolation.begin.punk" } },
+      "endCaptures": { "0": { "name": "punctuation.section.interpolation.end.punk" } },
+      "contentName": "source.punk",
+      "patterns": [{ "include": "#expression" }]
+    },
+    "char": {
+      "name": "string.quoted.single.punk",
+      "match": "'(?:\\\\(?:u\\([0-9A-Fa-f]+\\)|.)|[^'\\\\])'"
+    },
+    "number": {
+      "patterns": [
+        { "match": "\\b0x[0-9A-Fa-f_]+\\b", "name": "constant.numeric.hex.punk" },
+        { "match": "\\b0b[01_]+\\b", "name": "constant.numeric.binary.punk" },
+        { "match": "\\b[0-9][0-9_]*\\.[0-9][0-9_]*(?:[eE][+-]?[0-9]+)?\\b", "name": "constant.numeric.float.punk" },
+        { "match": "\\b[0-9][0-9_]*\\b", "name": "constant.numeric.integer.punk" }
+      ]
+    },
+    "accessor": {
+      "comment": "`.name` and `.0` as functions or fields: `person.name`, `List.map .name people`.",
+      "match": "(?<![A-Za-z0-9_)\\]}])\\.([a-z][A-Za-z0-9_]*|[0-9]+)\\b|(?<=[a-z0-9_)\\]}])\\.([a-z][A-Za-z0-9_]*|[0-9]+)\\b",
+      "captures": {
+        "1": { "name": "entity.name.function.accessor.punk" },
+        "2": { "name": "variable.other.member.punk" }
+      }
+    },
+    "qualified": {
+      "comment": "`List.map`, `Platform.Stdout.line!`, `D.Decoder`.",
+      "match": "\\b((?:[A-Z][A-Za-z0-9_]*\\.)+)(?:([a-z][A-Za-z0-9_]*!?)|([A-Z][A-Za-z0-9_]*))",
+      "captures": {
+        "1": { "name": "entity.name.namespace.punk" },
+        "2": { "name": "variable.function.punk" },
+        "3": { "name": "entity.name.type.punk" }
+      }
+    },
+    "module-name": {
+      "match": "\\b[A-Z][A-Za-z0-9_]*(?:\\.[A-Z][A-Za-z0-9_]*)*\\b",
+      "name": "entity.name.namespace.punk"
+    },
+    "constructor": {
+      "patterns": [
+        { "match": "\\b(True|False)\\b", "name": "constant.language.boolean.punk" },
+        { "match": "\\b[A-Z][A-Za-z0-9_]*\\b", "name": "entity.name.type.punk" }
+      ]
+    },
+    "effect-name": {
+      "comment": "A name ending in `!` does effects: `main!`, `Stdout.line!`.",
+      "match": "\\b[a-z][A-Za-z0-9_]*!",
+      "name": "entity.name.function.effect.punk"
+    },
+    "lower-name": {
+      "match": "\\b(_|[a-z][A-Za-z0-9_]*)\\b",
+      "name": "variable.other.punk"
+    },
+    "punctuation": {
+      "patterns": [
+        { "match": ",", "name": "punctuation.separator.comma.punk" },
+        { "match": "[\\[\\]]", "name": "punctuation.section.brackets.punk" },
+        { "match": "[()]", "name": "punctuation.section.parens.punk" },
+        { "match": "[{}]", "name": "punctuation.section.braces.punk" }
+      ]
+    }
+  }
+}

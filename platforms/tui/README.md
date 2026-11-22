@@ -4,37 +4,49 @@ The platform for punk terminal apps. Its host is written in Rust, on
 [ambit](https://github.com/eelcoh/ambit)'s `tui` platform: ambit owns the
 terminal (raw mode, the alternate screen, restoring it on exit, error and
 panic), the event loop and the worker threads, and draws with ratatui. The
-punk app is the Elm architecture: a model, an `update` for every event, and a
-`view` that says what the screen shows.
+punk app is the Elm architecture: a model, an `update` for every message, a
+`view` that says what the screen shows, and `subscriptions` that say what the
+app listens to.
 
 ```
 app [Model, Msg, main] { Platform: platform "tui" }
 
-import Platform.Tui exposing [Event]
+import Platform.Tui
 import Platform.Cmd
+import Platform.Sub
+import Platform.Clock
 import Platform.View
 
 type alias Model =
     { count : Int
+    , paused : Bool
     }
 
 type Msg
-    = Tick
+    = Pressed Tui.Key
+    | Tick Int
 
 main =
-    { init = init, update = update, view = view }
+    { init = init, update = update, view = view, subscriptions = subscriptions }
 
 init : (Model, Cmd Msg)
 init =
-    ({ count = 0 }, Cmd.after 1000 Tick)
+    ({ count = 0, paused = False }, Cmd.none)
 
-update : Event Msg -> Model -> (Model, Cmd Msg)
-update = fn event, model ->
-    case event of
-        Key (Char "q") -> (model, Cmd.quit)
-        Key _ -> ({ model | count = model.count + 1 }, Cmd.none)
-        Msg Tick -> ({ model | count = model.count + 10 }, Cmd.after 1000 Tick)
-        _ -> (model, Cmd.none)
+update : Msg -> Model -> (Model, Cmd Msg)
+update = fn msg, model ->
+    case msg of
+        Pressed (Char "q") -> (model, Cmd.quit)
+        Pressed (Char "p") -> ({ model | paused = not model.paused }, Cmd.none)
+        Pressed _ -> ({ model | count = model.count + 1 }, Cmd.none)
+        Tick _ -> ({ model | count = model.count + 10 }, Cmd.none)
+
+subscriptions : Model -> Sub Msg
+subscriptions = fn model ->
+    if model.paused then
+        Sub.onKey Pressed
+    else
+        Sub.batch [Sub.onKey Pressed, Clock.every 1000 Tick]
 
 view : Model -> View
 view = fn model ->
@@ -44,15 +56,18 @@ view = fn model ->
         ]
 ```
 
-The app exposes its `Model` and `Msg` types and `main`, a record of the three
-functions.
+The app exposes its `Model` and `Msg` types and `main`, a record of its four
+parts. As in Elm, `update` gets only the app's own messages: keys, pastes, the
+terminal's size and time come in through `subscriptions`, which the platform
+asks again after every update, so the model decides what the app listens to.
 
 | Module | What it has |
 |--------|-------------|
-| `Tui` | `Event msg`: `Key Key`, `Paste Str`, `Resize Int Int` (columns, rows: always the first event, and again when the terminal changes), `Msg msg` (the answer to a `Cmd`). `Key`: `Char "a"` (shift applied: `"A"`), `Ctrl "c"`, `Alt "x"`, `Enter`, `Esc`, `Backspace`, `Delete`, `Tab`, `BackTab`, `Up`, `Down`, `Left`, `Right`, `Home`, `End`, `PageUp`, `PageDown`, `Insert`, `F Int` |
+| `Sub` | `Sub.none`, `Sub.batch [..]`, `Sub.map f sub`, `Sub.onKey toMsg` (a `Tui.Key`), `Sub.onPaste toMsg` (a `Str`), `Sub.onResize toMsg` (columns, rows: once at the start, and again when the terminal changes) |
+| `Tui` | `Tui.Key`: `Char "a"` (shift applied: `"A"`), `Ctrl "c"`, `Alt "x"`, `Enter`, `Esc`, `Backspace`, `Delete`, `Tab`, `BackTab`, `Up`, `Down`, `Left`, `Right`, `Home`, `End`, `PageUp`, `PageDown`, `Insert`, `F Int` |
 | `Cmd` | `Cmd.none`, `Cmd.quit`, `Cmd.batch [..]`, `Cmd.after ms msg`, `Cmd.map f cmd` |
 | `File` | `File.read path toMsg` (`Result Str Str`), `File.list path toMsg` (`Result (List Str) Str`, folders end in `/`) |
-| `Clock` | `Clock.now toMsg` (milliseconds since 1970) |
+| `Clock` | `Clock.now toMsg` (a `Cmd`: milliseconds since 1970), `Clock.every ms toMsg` (a `Sub`: the time, every `ms` milliseconds) |
 | `View` | `View.text`, `View.paragraph [lines]`, `View.list selected [lines]` (one line highlighted and kept in sight), `View.column [..]`, `View.row [..]`, `View.height n v`, `View.width n v`, `View.block title v` (a frame), `View.empty`. A line is a list of spans: `View.span [View.bold, View.fg Yellow] "text"`, `View.plain "text"`. Styles: `bold`, `dim`, `italic`, `underline`, `reversed`, `fg color`, `bg color`; the sixteen terminal colours `Black`, `Red`, ..., `LightCyan`, `White` |
 
 In a `column`, a view with a `height` gets that many rows and the others
@@ -110,17 +125,22 @@ cargo run -- ..                # on your terminal: the books of ../library.json
 
 `main.roc` keeps the app's model in a `Box`, together with the replies it
 still waits for. Each entry point (`roc_tui_init`, `roc_tui_update` for a
-key, paste or resize, `roc_tui_reply` for the answer to a command) gives the
-host three things back: the commands as text (one line each, `quit` or
-`<id>\t<kind>\t<arg>`, see `Cmd.to_host`), the new box, and the screen as
-text (one node per line, see `View.to_host` and `host/src/view.rs`). Text,
-not Roc's memory layout, so the contract is small and the host can't misread
-a tag union. The host can't be made to fail by what the app draws: what it
-can't read it leaves out.
+key, paste or resize, `roc_tui_reply` for the answer to a command,
+`roc_tui_tick` for a timer) gives the host four things back: the commands as
+text (one line each, `quit` or `<id>\t<kind>\t<arg>`, see `Cmd.to_host`), the
+new box, the timers the subscriptions ask for (one length in milliseconds
+per line, see `Sub.to_host`), and the screen as text (one node per line, see
+`View.to_host` and `host/src/view.rs`). Text, not Roc's memory layout, so the
+contract is small and the host can't misread a tag union. The host can't be
+made to fail by what the app draws: what it can't read it leaves out.
+
+A key, a paste or a resize goes to the app's update once for each
+subscription that listens to it, and not at all when none does. The host
+starts a timer when a length appears in the subscriptions and stops it when
+the length is gone; a timer that was stopped and started again begins anew.
 
 ## Not done yet
 
-- Elm's `subscriptions` (keys arrive as events instead), a `Time.every`.
 - Tables with columns (`View.list` takes lines; the app pads them), wrapping
   text, scrolling a paragraph, colours beyond the sixteen.
 - Writing files, the network, `Cmd.serial` (ambit has it), progress from a

@@ -263,7 +263,7 @@ Everything a module exposes needs a type annotation (rule P201).
 | `case` on `x :: xs` | list patterns `[x, ..xs]`; `::` does not exist |
 | `(+)`, `(::)` | write a lambda: `fn a, b -> a + b` |
 | `Html`, `Browser` | not yet; programs are command-line apps, servers or terminal apps on a platform |
-| `Cmd`, `Browser.element` | the tui platform: `init`, `update`, `view` and `Cmd` (see "The tui platform") |
+| `Cmd`, `Sub`, `Browser.element` | the tui platform: `init`, `update`, `view`, `subscriptions`, `Cmd` and `Sub` (see "The tui platform") |
 | `port`, `Task` | effects are `!` functions |
 | `type alias Model = {...}` | same |
 | `/=` | same (`!=` works too; write `/=`) |
@@ -475,7 +475,12 @@ outside), and an old column the new row doesn't take is dropped.
 
 ```
 Db.join : table -> (row -> row2 -> Bool) -> query -- JOIN ... ON; the steps after it take a row of each
+Db.leftJoin : table -> (row -> row2 -> Bool) -> query -- LEFT JOIN: the steps after it take a row and a Maybe row2
 Db.filter : (row -> Bool) -> query -> query       -- several filters: AND
+Db.groupBy : (row -> key) -> query -> query       -- GROUP BY: the steps after it take the key and the rows
+Db.count : rows -> Int                            -- in the map after a groupBy: COUNT(*)
+Db.sum : (row -> number) -> rows -> number        -- SUM; Db.min, Db.max keep the column type
+Db.avg : (row -> number) -> rows -> Float         -- AVG
 Db.sortBy : (row -> key) -> query -> query        -- ORDER BY ... ASC; the last sortBy decides first
 Db.sortByDescending : (row -> key) -> query -> query
 Db.drop : Int -> query -> query                   -- OFFSET
@@ -495,7 +500,8 @@ Db.toSql : Db.Query a -> Str
 ```
 
 Joins, sorting and paging stay one SQL statement. The steps come in this
-order: `join`, `filter`, `sortBy`, `drop`, `take`, `map`; after a `join` each
+order: `join` (or `leftJoin`), `filter`, `groupBy`, `sortBy`, `drop`, `take`,
+`map`; after a `join` each
 function takes a row of each table, and the query ends with a `map` that
 names what it gives:
 
@@ -509,6 +515,30 @@ publicNotes =
         |> Db.sortBy (fn _, person -> person.name)   -- by name, then by body
         |> Db.take 20
         |> Db.map (fn note, person -> { name = person.name, body = note.body })
+        |> Db.all
+```
+
+A `leftJoin` keeps the rows that have no match: the joined row is a `Maybe`
+(in its own condition it isn't). Take a column with `Maybe.map .name person`,
+or test `person == Nothing`. A `groupBy` gives one row for each key, and the
+`map` after it says what: the key, and aggregates of the rows. It works on one
+table for now.
+
+```
+allPublicNotes : Db.Query (List { name : Maybe Str, body : Str })
+allPublicNotes =
+    notes
+        |> Db.leftJoin people (fn note, person -> note.owner == person.id)
+        |> Db.filter (fn note, _ -> note.public)
+        |> Db.map (fn note, person -> { name = Maybe.map .name person, body = note.body })
+        |> Db.all
+
+writers : Db.Query (List { owner : Str, count : Int, first : Str })
+writers =
+    notes
+        |> Db.groupBy .owner
+        |> Db.sortBy (fn owner, _ -> owner)
+        |> Db.map (fn owner, rows -> { owner, count = Db.count rows, first = Db.min .body rows })
         |> Db.all
 ```
 
@@ -676,38 +706,52 @@ architecture. The app exposes its `Model` and `Msg` types and `main`:
 ```
 app [Model, Msg, main] { Platform: platform "tui" }
 
-import Platform.Tui exposing [Event]
+import Platform.Tui
 import Platform.Cmd
+import Platform.Sub
 import Platform.View
 import Platform.File
 
-main = { init = init, update = update, view = view }
+type Msg
+    = Loaded (Result Str Str)
+    | Pressed Tui.Key
+
+main = { init = init, update = update, view = view, subscriptions = subscriptions }
 
 init : (Model, Cmd Msg)                            -- a value, not a function
 init = ({ books = [] }, File.read "library.json" Loaded)
 
-update : Event Msg -> Model -> (Model, Cmd Msg)
-update = fn event, model ->
-    case event of
-        Key (Char "q") -> (model, Cmd.quit)
-        Key Down -> ...
-        Msg (Loaded (Ok text)) -> ...
+update : Msg -> Model -> (Model, Cmd Msg)
+update = fn msg, model ->
+    case msg of
+        Pressed (Char "q") -> (model, Cmd.quit)
+        Pressed Down -> ...
+        Loaded (Ok text) -> ...
         _ -> (model, Cmd.none)
+
+subscriptions : Model -> Sub Msg                   -- asked again after every update
+subscriptions = fn _ -> Sub.onKey Pressed
 
 view : Model -> View
 ```
 
 ```
-Event msg = Key Tui.Key | Paste Str | Resize Int Int | Msg msg   -- Resize: columns, rows; always first
 Tui.Key = Char Str | Ctrl Str | Alt Str | Enter | Esc | Backspace | Delete | Tab | BackTab
         | Up | Down | Left | Right | Home | End | PageUp | PageDown | Insert | F Int
 Cmd.none, Cmd.quit : Cmd msg
 Cmd.batch : List (Cmd msg) -> Cmd msg
 Cmd.after : Int -> msg -> Cmd msg                  -- milliseconds
 Cmd.map : (a -> b) -> Cmd a -> Cmd b
+Sub.none : Sub msg
+Sub.batch : List (Sub msg) -> Sub msg
+Sub.map : (a -> b) -> Sub a -> Sub b
+Sub.onKey : (Tui.Key -> msg) -> Sub msg
+Sub.onPaste : (Str -> msg) -> Sub msg
+Sub.onResize : (Int -> Int -> msg) -> Sub msg   -- columns, rows: once at the start, then on a change
 File.read : Str -> (Result Str Str -> msg) -> Cmd msg            -- only in the app's folder
 File.list : Str -> (Result (List Str) Str -> msg) -> Cmd msg     -- "" is the folder; folders end in /
 Clock.now : (Int -> msg) -> Cmd msg                -- milliseconds since 1970
+Clock.every : Int -> (Int -> msg) -> Sub msg       -- every this many milliseconds, with the time
 View.text : Str -> View                            -- lines of plain text
 View.paragraph : List View.Line -> View            -- View.Line = List View.Span
 View.list : Int -> List View.Line -> View          -- the line at this index highlighted, kept in sight
@@ -724,7 +768,9 @@ View.fg, View.bg : View.Color -> View.Attr         -- Black Red Green Yellow Blu
 
 A tag with arguments is a function, as in Elm: `File.read path Loaded`.
 Effects are commands: the app has no `!` functions; the platform does the
-work off the screen's thread and answers with a `Msg`. Like a server, a
+work off the screen's thread and answers with a `Msg`. Keys, pastes, the
+terminal's size and timers come only through `subscriptions`: a key nothing
+listens to doesn't reach `update`. Like a server, a
 terminal app is not run with `punk app.punk`: a small Rust crate links it
 and tests it on ambit's sim (see `platforms/tui/README.md` and
 `examples/library/`). `compare` does not take `Str` (Roc's strings have
@@ -1765,35 +1811,46 @@ library view (sorting, marking, searching), with its tests on ambit's sim.
 ```
 app [Model, Msg, main] { Platform: platform "tui" }
 
-import Platform.Tui exposing [Event]
+import Platform.Tui
 import Platform.Cmd
+import Platform.Sub
+import Platform.Clock
 import Platform.View
 
 {-| The smallest punk terminal app: counts key presses, and ten more every
-second. q quits.
+second. q quits; p pauses the clock.
 -}
 
 type alias Model =
     { count : Int
+    , paused : Bool
     }
 
 type Msg
-    = Tick
+    = Pressed Tui.Key
+    | Tick Int
 
 main =
-    { init = init, update = update, view = view }
+    { init = init, update = update, view = view, subscriptions = subscriptions }
 
 init : (Model, Cmd Msg)
 init =
-    ({ count = 0 }, Cmd.after 1000 Tick)
+    ({ count = 0, paused = False }, Cmd.none)
 
-update : Event Msg -> Model -> (Model, Cmd Msg)
-update = fn event, model ->
-    case event of
-        Key (Char "q") -> (model, Cmd.quit)
-        Key _ -> ({ model | count = model.count + 1 }, Cmd.none)
-        Msg Tick -> ({ model | count = model.count + 10 }, Cmd.after 1000 Tick)
-        _ -> (model, Cmd.none)
+update : Msg -> Model -> (Model, Cmd Msg)
+update = fn msg, model ->
+    case msg of
+        Pressed (Char "q") -> (model, Cmd.quit)
+        Pressed (Char "p") -> ({ model | paused = not model.paused }, Cmd.none)
+        Pressed _ -> ({ model | count = model.count + 1 }, Cmd.none)
+        Tick _ -> ({ model | count = model.count + 10 }, Cmd.none)
+
+subscriptions : Model -> Sub Msg
+subscriptions = fn model ->
+    if model.paused then
+        Sub.onKey Pressed
+    else
+        Sub.batch [Sub.onKey Pressed, Clock.every 1000 Tick]
 
 view : Model -> View
 view = fn model ->

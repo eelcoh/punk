@@ -48,6 +48,7 @@ zig-out/bin/punk fmt examples/elm.punk
 | `platforms/cli`, `server`, `tui` | the platforms: their API and their Rust host |
 | `packages/json` | Elm-style `Json.Decode` / `Json.Encode` |
 | `examples/` | example apps, and the golden tests' programs |
+| `docs/tutorial/` | the tutorial (mdBook; its code is included from `examples/`) |
 | `test/` | golden tests, setup of the hosts, everything CI runs (`test/ci.sh`) |
 
 ## Roc

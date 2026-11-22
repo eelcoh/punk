@@ -7,3 +7,5 @@ target
 # Built hosts and libraries (test/setup.sh puts them in platforms/*/targets).
 *.a
 *.o
+# The tutorial, built by mdBook (docs/tutorial).
+docs/tutorial/book

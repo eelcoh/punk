@@ -1,0 +1,71 @@
+# The tutorial (docs/tutorial), built with mdBook: checked on every PR that
+# touches it or the examples it includes, and published on GitHub Pages from
+# main. Pages must be set to "GitHub Actions" in the repository's settings.
+
+name: docs
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**', 'examples/**', '.github/workflows/docs.yml']
+  pull_request:
+    branches: [main]
+    paths: ['docs/**', 'examples/**', '.github/workflows/docs.yml']
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MDBOOK_VERSION: 0.4.52
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6.0.2
+      - name: Install mdBook
+        run: |
+          mkdir -p "$RUNNER_TEMP/mdbook"
+          curl -fsSL "https://github.com/rust-lang/mdBook/releases/download/v$MDBOOK_VERSION/mdbook-v$MDBOOK_VERSION-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar -xz -C "$RUNNER_TEMP/mdbook"
+          echo "$RUNNER_TEMP/mdbook" >> "$GITHUB_PATH"
+      - name: Build
+        run: mdbook build docs/tutorial
+      # An {{#include file:anchor}} whose anchor is gone gives an empty code
+      # block, and mdBook only warns; check that each one is there.
+      - name: Every include finds its code
+        run: |
+          status=0
+          for page in $(find docs/tutorial/src -name '*.md'); do
+            grep -o '{{#include [^}]*}}' "$page" | sed 's/{{#include \(.*\)}}/\1/' | while IFS=: read -r file anchor; do
+              path="$(dirname "$page")/$file"
+              if [ ! -f "$path" ]; then echo "$page: no file $file"; exit 1; fi
+              if [ -n "$anchor" ] && ! grep -q "ANCHOR: $anchor\$" "$path"; then echo "$page: no anchor $anchor in $file"; exit 1; fi
+            done || status=1
+          done
+          exit $status
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
+        with:
+          path: docs/tutorial/book
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

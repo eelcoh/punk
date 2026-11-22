@@ -21,6 +21,7 @@ sh test/golden.sh
 (cd examples/shortener-postgres/server && cargo test --locked)
 (cd examples/shortener-mongo/server && cargo test --locked)
 (cd examples/notes/server && cargo test --locked)
+(cd examples/todos/server && cargo test --locked)
 # The terminal apps, on ambit's sim terminal: the counter and crossload's
 # library view.
 (cd examples/counter/tui && cargo test --locked)

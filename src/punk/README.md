@@ -85,6 +85,10 @@ translator keeps a source map (where each name, literal and operator of the
 translation came from), and every report about a `.punk` file is rewritten
 with it before it is shown (`src/punk/roc/report.zig`): positions and
 source lines come from the `.punk` file, and names are spelled as in punkroc.
+Types are written as in punk too (`src/punk/type_text.zig`): Roc's
+`Try(I64, Str)` is `Result Int Str`, `[Just(a), Nothing]` is `Maybe a`, and
+the type variable of a number literal is Elm's `number` instead of a `where`
+clause.
 
 ```
 ── ✗ name not in scope ─────────────────── examples/app.punk:20:9

@@ -52,6 +52,55 @@ test "snake case" {
     try std.testing.expectEqualStrings("line!", try punk.snake(a, "line!"));
 }
 
+test "types in error messages are written as in punk" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const cases = [_][2][]const u8{
+        .{ "Try(I64, Str)", "Result Int Str" },
+        .{ "List(List(F64))", "List (List Float)" },
+        .{ "{ age: I64, name: Str }", "{ age : Int, name : Str }" },
+        .{ "{ name: Str, ..a }", "{ a | name : Str }" },
+        .{ "[Just(I64), Nothing]", "Maybe Int" },
+        .{ "List([Just(Str), Nothing])", "List (Maybe Str)" },
+        .{ "[Circle(F64), Rect(F64, F64)]", "(Circle Float | Rect Float Float)" },
+        .{ "[Red, ..others]", "(Red | ..others)" },
+        .{ "[LT, EQ, GT]", "Order" },
+        .{ "I64, I64 -> I64", "Int, Int -> Int" },
+        .{ "List(a), (a -> Bool) -> List(a)", "List a, (a -> Bool) -> List a" },
+        .{ "Str => Try({}, [Exit(I32)])", "Str => Result {} (Exit I32)" },
+        .{ "(Str, I64)", "(Str, Int)" },
+        .{ "Dict(_k, _v)", "Dict _k _v" },
+        .{ "List(List(a)) where [a.from_quote : Str -> Try(a, [BadQuotedBytes(Str)])]", "List (List Str)" },
+        .{
+            \\{ age: a, name: b }
+            \\  where [
+            \\    a.from_numeral : Numeral -> Try(a, [InvalidNumeral(Str)]),
+            \\    b.from_quote : Str -> Try(b, [BadQuotedBytes(Str)]),
+            \\  ]
+            ,
+            "{ age : number, name : Str }",
+        },
+        .{
+            \\a -> a
+            \\  where [
+            \\    a.fromNumeral : Numeral -> Try(a, [InvalidNumeral(Str)]),
+            \\    a.plus : a, a -> a,
+            \\  ]
+            ,
+            "number -> number",
+        },
+        .{ "a -> Str where [a.to_str : a -> Str]", "a -> Str where a.toStr : a -> Str" },
+    };
+    for (cases) |c| {
+        const got = (try mod.punkType(a, c[0])) orelse c[0];
+        try std.testing.expectEqualStrings(c[1], got);
+    }
+    // Nothing to change, or not a type.
+    try std.testing.expectEqual(null, try mod.punkType(a, "Str"));
+    try std.testing.expectEqual(null, try mod.punkType(a, "this is ( not a type"));
+}
+
 test "functions, application, lambdas" {
     try check(
         \\add : I64, I64 -> I64

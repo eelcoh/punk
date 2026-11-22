@@ -58,7 +58,10 @@ parse = fn input ->
             updates =
                 updatesPart
                     |> Str.splitOn "\n"
-                    |> try List.mapTry (fn line -> line |> Str.splitOn "," |> List.mapTry U64.fromStr)
+                    |> try List.mapTry
+                        (fn line ->
+                            line |> Str.splitOn "," |> List.mapTry U64.fromStr
+                        )
             Ok { rules = rules, updates = updates }
         _ ->
             Err MissingBlankLine

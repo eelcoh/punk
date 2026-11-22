@@ -34,7 +34,8 @@ parseReport = fn line ->
 isSafe : List I64 -> Bool
 isSafe = fn levels ->
     steps = differences levels
-    List.all (fn d -> d >= 1 && d <= 3) steps || List.all (fn d -> d <= -1 && d >= -3) steps
+    List.all (fn d -> d >= 1 && d <= 3) steps
+        || List.all (fn d -> d <= -1 && d >= -3) steps
 
 differences : List I64 -> List I64
 differences = fn levels ->

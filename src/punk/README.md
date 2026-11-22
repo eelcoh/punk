@@ -125,7 +125,13 @@ without options, like elm-format: 4 spaces per indentation level, one space
 between tokens (none inside `( )` and `[ ]`, one inside `{ }`, spaces around
 operators), Elm's leading commas when a list is written that way, one blank
 line between top-level definitions and none between an annotation and its
-definition. Line breaks stay where the author put them. `--check` lists the
+definition. Line breaks stay where the author put them, except that a line
+longer than 80 characters is split as elm-format would write it: the body of
+a definition or `case` branch on the next line, one line per `|>` (and per
+`&&`, `||`, `++`), an `if` with its branches on lines of their own, a list,
+record or tuple with leading commas, one argument per line for a call, and
+the body of a lambda in parentheses on a line of its own. A line that is long
+only because of a long string stays as it is. `--check` lists the
 files that are not formatted and fails. The formatter works on tokens, keeps
 every comment, and checks its own work: when the Roc translation of the
 result differs from that of the original (ignoring whitespace), it leaves the
@@ -413,6 +419,10 @@ The translator gives Roc its lowercase names (`pf`, `json`).
 - **`==` on your own types.** Every `type` gets `is_eq` and `to_hash`
   methods (equal when the tags and their values are equal), so `outcome ==
   Loops` works and the type can go in a `Set` or be a `Dict` key, as in Elm.
+  A value that is a record or a tuple (or a `List` of them) is compared part
+  by part: Roc's type checker never finishes when such a method compares a
+  record or tuple holding the type itself as a whole (`JObject (List (Str,
+  Value))`). `examples/equality` checks it.
 - **Multi-line strings.** Between `"""` and `"""`. When the text starts on the
   line after the opening quotes and the closing quotes stand on a line of
   their own, those line breaks go, and so does the indentation of the closing

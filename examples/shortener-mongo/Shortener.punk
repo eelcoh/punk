@@ -226,7 +226,9 @@ validUrl = fn body ->
             url = String.trim raw
             bytes = Str.toUtf8 url
             fits = List.len bytes <= maxUrl && List.all isHeaderByte bytes
-            web = String.startsWith "https://" url || String.startsWith "http://" url
+            web =
+                String.startsWith "https://" url
+                    || String.startsWith "http://" url
             if fits && web then Just url else Nothing
 
 isHeaderByte : U8 -> Bool

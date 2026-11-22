@@ -63,7 +63,10 @@ part2 = fn grid, guard, visited ->
     visited
         |> Set.toList
         |> List.dropIf (fn p -> p == guard.pos)
-        |> List.countIf (fn obstacle -> patrol (withObstacle grid obstacle) guard Set.empty == Loops)
+        |> List.countIf
+            (fn obstacle ->
+                patrol (withObstacle grid obstacle) guard Set.empty == Loops
+            )
 
 withObstacle : Grid -> Point -> Point -> U8
 withObstacle = fn grid, obstacle, p ->

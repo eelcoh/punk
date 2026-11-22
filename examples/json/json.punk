@@ -43,7 +43,11 @@ shape =
             (fn kind ->
                 case kind of
                     "circle" -> D.map (fn r -> Circle r) (D.field "r" D.float)
-                    "rect" -> D.map2 (fn w, h -> Rect w h) (D.field "w" D.float) (D.field "h" D.float)
+                    "rect" ->
+                        D.map2
+                            (fn w, h -> Rect w h)
+                            (D.field "w" D.float)
+                            (D.field "h" D.float)
                     _ -> D.fail "unknown kind ${kind}"
             )
 
@@ -78,7 +82,12 @@ inputs =
 main! = fn () ->
     Stdout.line! "-- users"
     inputs
-        |> List.map (fn text -> show (D.decodeString user text) (fn u -> E.encode 0 (encodeUser u)))
+        |> List.map
+            (fn text ->
+                show
+                    (D.decodeString user text)
+                    (fn u -> E.encode 0 (encodeUser u))
+            )
         |> List.forEach! Stdout.line!
 
     Stdout.line! "-- shapes"
@@ -86,7 +95,10 @@ main! = fn () ->
     , "{\"kind\": \"rect\", \"w\": 2, \"h\": 3.5}"
     , "{\"kind\": \"star\"}"
     ]
-        |> List.map (fn text -> show (D.decodeString shape text) (fn s -> F64.toStr (area s)))
+        |> List.map
+            (fn text ->
+                show (D.decodeString shape text) (fn s -> F64.toStr (area s))
+            )
         |> List.forEach! Stdout.line!
 
     Stdout.line! "-- text"
@@ -102,16 +114,46 @@ main! = fn () ->
 
     Stdout.line! "-- at, index, keyValuePairs, nullable"
     nested = "{\"user\": {\"names\": [\"first\", \"second\"]}, \"counts\": {\"a\": 1, \"b\": 2}, \"x\": null}"
-    Stdout.line! (show (D.decodeString (D.at ["user", "names"] (D.index 1 D.string)) nested) (fn s -> s))
-    Stdout.line! (show (D.decodeString (D.field "counts" (D.keyValuePairs D.int)) nested) (fn kvs -> kvs |> List.map (fn (k, v) -> "${k}=${String.fromInt v}") |> Str.joinWith ","))
-    Stdout.line! (show (D.decodeString (D.field "x" (D.nullable D.int)) nested) (fn m -> Maybe.withDefault "null" (Maybe.map String.fromInt m)))
-    Stdout.line! (show (D.decodeString (D.at ["user", "names"] (D.index 5 D.string)) nested) (fn s -> s))
-    Stdout.line! (show (D.decodeString (D.field "tags" (D.list D.string)) "{\"tags\": [\"x\", 4]}") (Str.joinWith ","))
+    Stdout.line!
+        (show
+            (D.decodeString
+                (D.at ["user", "names"] (D.index 1 D.string))
+                nested
+            )
+            (fn s -> s)
+        )
+    Stdout.line!
+        (show
+            (D.decodeString (D.field "counts" (D.keyValuePairs D.int)) nested)
+            (fn kvs -> kvs |> List.map (fn (k, v) -> "${k}=${String.fromInt v}") |> Str.joinWith ",")
+        )
+    Stdout.line!
+        (show
+            (D.decodeString (D.field "x" (D.nullable D.int)) nested)
+            (fn m -> Maybe.withDefault "null" (Maybe.map String.fromInt m))
+        )
+    Stdout.line!
+        (show
+            (D.decodeString
+                (D.at ["user", "names"] (D.index 5 D.string))
+                nested
+            )
+            (fn s -> s)
+        )
+    Stdout.line!
+        (show
+            (D.decodeString (D.field "tags" (D.list D.string)) "{\"tags\": [\"x\", 4]}")
+            (Str.joinWith ",")
+        )
 
 -- Compared as text or as a Maybe: `==` on a type that holds itself (Value, D.Error)
 -- makes the compiler hang for now.
 expect Result.map (Value.encode 0) (Value.parse " [true , false,null] ") == Ok "[true,false,null]"
 
-expect Result.toMaybe (D.decodeString (D.list D.int) "[1, 2, 3]") == Just [1, 2, 3]
+expect Result.toMaybe (D.decodeString (D.list D.int) "[1, 2, 3]") == Just
+    [ 1
+    , 2
+    , 3
+    ]
 
 expect E.encode 0 (E.float 1.5) == "1.5"

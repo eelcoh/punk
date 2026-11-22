@@ -28,7 +28,14 @@ at = fn grid, { row, col } ->
 points : Grid -> List Point
 points = fn grid ->
     grid
-        |> List.mapWithIndex (fn line, row -> List.mapWithIndex (fn _, col -> { row = U64.toI64Wrap row, col = U64.toI64Wrap col }) line)
+        |> List.mapWithIndex
+            (fn line, row ->
+                List.mapWithIndex
+                    (fn _, col ->
+                        { row = U64.toI64Wrap row, col = U64.toI64Wrap col }
+                    )
+                    line
+            )
         |> List.join
 
 -- The first point that holds `char`

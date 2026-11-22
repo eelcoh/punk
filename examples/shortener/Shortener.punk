@@ -95,7 +95,8 @@ resolve! = fn config, id ->
     stored = try Kv.get! (key id)
     link =
         stored
-            |> Maybe.andThen (fn json -> Result.toMaybe (D.decodeString linkDecoder json))
+            |> Maybe.andThen
+                (fn json -> Result.toMaybe (D.decodeString linkDecoder json))
     case link of
         Nothing -> Ok (text 404 "not found\n")
         Just { created, url } ->
@@ -163,7 +164,9 @@ validUrl = fn body ->
             url = String.trim raw
             bytes = Str.toUtf8 url
             fits = List.len bytes <= maxUrl && List.all isHeaderByte bytes
-            web = String.startsWith "https://" url || String.startsWith "http://" url
+            web =
+                String.startsWith "https://" url
+                    || String.startsWith "http://" url
             if fits && web then Just url else Nothing
 
 isHeaderByte : U8 -> Bool

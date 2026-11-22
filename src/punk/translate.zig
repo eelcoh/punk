@@ -1943,6 +1943,10 @@ pub const Emitter = struct {
     scope: std.ArrayList(Binding) = .empty,
     /// Counter for the names of generated lambda parameters.
     fresh: u32 = 0,
+    /// The module's own type aliases without parameters, by name, so that
+    /// the generated `is_eq` and `to_hash` can see the record or tuple behind
+    /// a name (`emitEquality`).
+    local_alias_types: std.StringHashMapUnmanaged(*Type) = .empty,
     /// The source, to point at names in error messages.
     src: []const u8 = "",
     resolver: ?Resolver = null,
@@ -2047,7 +2051,10 @@ pub const Emitter = struct {
     /// that type carries the block.
     fn emitModule(e: *Emitter, items: []Item) Error!void {
         for (items) |item| switch (item.kind) {
-            .type_alias => |t| try e.local_types.put(e.a, t.name, {}),
+            .type_alias => |t| {
+                try e.local_types.put(e.a, t.name, {});
+                if (t.params.len == 0) try e.local_alias_types.put(e.a, t.name, t.ty);
+            },
             .type_nominal => |t| {
                 try e.local_types.put(e.a, t.name, {});
                 for (t.alts) |alt| if (tagOf(alt)) |tag| if (tag.n > 0) try e.tag_arity.put(e.a, tag.name, tag.n);
@@ -2225,6 +2232,15 @@ pub const Emitter = struct {
     /// `to_hash` methods. Elm compares every custom type structurally, so
     /// punkroc writes these methods for each `type`: equal when the tags and
     /// all their values are equal.
+    ///
+    /// A value that is a record or a tuple (also inside a `List`) is taken
+    /// apart here and its parts compared one by one, instead of with `==` on
+    /// the whole. Roc's type checker does not finish when `is_eq` of a
+    /// recursive type compares a record or tuple that holds that type
+    /// (`JObject (List (Str, Value))`) and a function annotated to return the
+    /// type is compared somewhere: its structural derivation keeps minting
+    /// new obligations. Comparing the parts gives the same answer and avoids
+    /// that derivation.
     fn emitEquality(e: *Emitter, alts: []*Type) Error!void {
         try e.w("is_eq = |punk_x, punk_y| match (punk_x, punk_y) {");
         e.indent += 1;
@@ -2239,7 +2255,9 @@ pub const Emitter = struct {
             if (tag.n == 0) try e.w("True");
             for (0..tag.n) |i| {
                 if (i > 0) try e.w(" and ");
-                try e.buf.print(e.a, "punk_a{d} == punk_b{d}", .{ i + 1, i + 1 });
+                const a_name = try std.fmt.allocPrint(e.a, "punk_a{d}", .{i + 1});
+                const b_name = try std.fmt.allocPrint(e.a, "punk_b{d}", .{i + 1});
+                try e.emitEqOf(tagArg(alt, i), a_name, b_name);
             }
         }
         if (alts.len > 1) {
@@ -2258,14 +2276,131 @@ pub const Emitter = struct {
             try e.nl();
             try e.emitTagPattern(tag.name, tag.n, "a");
             try e.w(" => ");
-            var j = tag.n;
-            while (j > 0) : (j -= 1) try e.buf.print(e.a, "punk_a{d}.to_hash(", .{j});
-            try e.buf.print(e.a, "Hasher.write_u64(punk_h, {d})", .{k});
-            for (0..tag.n) |_| try e.w(")");
+            var hash: []const u8 = try std.fmt.allocPrint(e.a, "Hasher.write_u64(punk_h, {d})", .{k});
+            for (0..tag.n) |i| {
+                const a_name = try std.fmt.allocPrint(e.a, "punk_a{d}", .{i + 1});
+                hash = try e.hashOf(tagArg(alt, i), a_name, hash);
+            }
+            try e.w(hash);
         }
         e.indent -= 1;
         try e.nl();
         try e.w("}");
+    }
+
+    /// The type of the `i`th value of a tag, or null when the emitter can't
+    /// tell (then the value is compared as a whole).
+    fn tagArg(alt: *const Type, i: usize) ?*Type {
+        return switch (alt.*) {
+            .app => |app| if (i < app.args.len) app.args[i] else null,
+            .paren => |inner| tagArg(inner, i),
+            else => null,
+        };
+    }
+
+    /// The record or tuple a type is, looking through parentheses and the
+    /// module's own aliases; null for any other type.
+    fn structuralOf(e: *Emitter, ty: ?*Type) ?*Type {
+        var t = ty orelse return null;
+        var hops: usize = 0;
+        while (hops < 16) : (hops += 1) {
+            switch (t.*) {
+                .paren => |inner| t = inner,
+                .name => |n| t = e.local_alias_types.get(n) orelse return null,
+                .tuple => return t,
+                .record => |r| return if (r.ext == null) t else null,
+                else => return null,
+            }
+        }
+        return null;
+    }
+
+    /// The element type of a `List` whose elements are records or tuples.
+    fn structuralListElem(e: *Emitter, ty: ?*Type) ?*Type {
+        var t = ty orelse return null;
+        while (t.* == .paren) t = t.paren;
+        if (t.* != .app) return null;
+        const app = t.app;
+        if (!std.mem.eql(u8, app.head, "List") or app.args.len != 1) return null;
+        return if (e.structuralOf(app.args[0]) != null) app.args[0] else null;
+    }
+
+    /// The parts of a record or tuple type, and a pattern that names each
+    /// part `<prefix><n>`.
+    fn partsPattern(e: *Emitter, s: *Type, prefix: []const u8) Error!struct { pat: []const u8, names: [][]const u8, types: []*Type } {
+        var pat: std.ArrayList(u8) = .empty;
+        var names: std.ArrayList([]const u8) = .empty;
+        var types: std.ArrayList(*Type) = .empty;
+        switch (s.*) {
+            .tuple => |elems| {
+                try pat.append(e.a, '(');
+                for (elems, 0..) |el, i| {
+                    if (i > 0) try pat.appendSlice(e.a, ", ");
+                    const n = try std.fmt.allocPrint(e.a, "{s}{d}", .{ prefix, i + 1 });
+                    try pat.appendSlice(e.a, n);
+                    try names.append(e.a, n);
+                    try types.append(e.a, el);
+                }
+                try pat.append(e.a, ')');
+            },
+            .record => |r| {
+                try pat.appendSlice(e.a, "{ ");
+                for (r.fields, 0..) |f, i| {
+                    if (i > 0) try pat.appendSlice(e.a, ", ");
+                    const n = try std.fmt.allocPrint(e.a, "{s}{d}", .{ prefix, i + 1 });
+                    try pat.print(e.a, "{s}: {s}", .{ try snake(e.a, f.name), n });
+                    try names.append(e.a, n);
+                    try types.append(e.a, f.ty);
+                }
+                try pat.appendSlice(e.a, " }");
+            },
+            else => unreachable,
+        }
+        return .{ .pat = pat.items, .names = names.items, .types = types.items };
+    }
+
+    /// Writes a Bool expression that compares `a` and `b` of type `ty`.
+    fn emitEqOf(e: *Emitter, ty: ?*Type, a: []const u8, b: []const u8) Error!void {
+        if (e.structuralOf(ty)) |s| {
+            e.fresh += 1;
+            const pa = try e.partsPattern(s, try std.fmt.allocPrint(e.a, "punk_p{d}_", .{e.fresh}));
+            const pb = try e.partsPattern(s, try std.fmt.allocPrint(e.a, "punk_q{d}_", .{e.fresh}));
+            try e.buf.print(e.a, "match ({s}, {s}) {{ ({s}, {s}) => ", .{ a, b, pa.pat, pb.pat });
+            if (pa.names.len == 0) try e.w("True");
+            for (pa.names, pb.names, pa.types, 0..) |na, nb, t, i| {
+                if (i > 0) try e.w(" and ");
+                try e.emitEqOf(t, na, nb);
+            }
+            try e.w(" }");
+        } else if (e.structuralListElem(ty)) |elem| {
+            e.fresh += 1;
+            const id = e.fresh;
+            const x = try std.fmt.allocPrint(e.a, "punk_x{d}", .{id});
+            const y = try std.fmt.allocPrint(e.a, "punk_y{d}", .{id});
+            try e.buf.print(e.a, "(List.len({s}) == List.len({s}) and List.all(List.map2({s}, {s}, |{s}, {s}| ", .{ a, b, a, b, x, y });
+            try e.emitEqOf(elem, x, y);
+            try e.buf.print(e.a, "), |punk_r{d}| punk_r{d}))", .{ id, id });
+        } else {
+            try e.buf.print(e.a, "{s} == {s}", .{ a, b });
+        }
+    }
+
+    /// An expression that hashes `x` of type `ty` into the hasher `h`.
+    fn hashOf(e: *Emitter, ty: ?*Type, x: []const u8, h: []const u8) Error![]const u8 {
+        if (e.structuralOf(ty)) |s| {
+            e.fresh += 1;
+            const p = try e.partsPattern(s, try std.fmt.allocPrint(e.a, "punk_p{d}_", .{e.fresh}));
+            var inner = h;
+            for (p.names, p.types) |n, t| inner = try e.hashOf(t, n, inner);
+            return std.fmt.allocPrint(e.a, "match {s} {{ {s} => {s} }}", .{ x, p.pat, inner });
+        } else if (e.structuralListElem(ty)) |elem| {
+            e.fresh += 1;
+            const g = try std.fmt.allocPrint(e.a, "punk_g{d}", .{e.fresh});
+            const y = try std.fmt.allocPrint(e.a, "punk_y{d}", .{e.fresh});
+            const body = try e.hashOf(elem, y, g);
+            return std.fmt.allocPrint(e.a, "List.fold({s}, Hasher.write_u64({s}, List.len({s})), |{s}, {s}| {s})", .{ x, h, x, g, y, body });
+        }
+        return std.fmt.allocPrint(e.a, "{s}.to_hash({s})", .{ x, h });
     }
 
     const TagShape = struct { name: []const u8, n: usize };
@@ -2444,6 +2579,7 @@ pub const Emitter = struct {
     fn bindDef(e: *Emitter, pat: *Pattern, body: *Block) Error!void {
         if (pat.* != .ident) return e.bindPattern(pat);
         const name = try snake(e.a, pat.ident);
+        e.dropUnitParam(name, body);
         var arity: ?u8 = null;
         if (body.stmts.len == 0) if (body.result) |r| {
             arity = try e.exprArity(r);
@@ -2451,6 +2587,18 @@ pub const Emitter = struct {
         const anno = e.annoArity(name);
         if (arity == null or (try e.etaExtra(pat, body)) > 0) arity = anno;
         try e.scope.append(e.a, .{ .name = name, .arity = arity });
+    }
+
+    /// `f : () -> a` with `f = fn _ -> ...`, as Elm allows: the `_` stands
+    /// for the `()` the annotation takes, so the lambda gets no parameters
+    /// (Roc's `|| ...`), the same as `fn () -> ...`.
+    fn dropUnitParam(e: *Emitter, name: []const u8, body: *Block) void {
+        if (body.stmts.len != 0) return;
+        const r = body.result orelse return;
+        if (r.* != .lambda) return;
+        if (r.lambda.params.len != 1 or r.lambda.params[0].* != .underscore) return;
+        if ((e.annoArity(name) orelse return) != 0) return;
+        r.lambda.params = &.{};
     }
 
     /// The arity of the annotation in scope for `name`, if any.

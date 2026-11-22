@@ -99,6 +99,65 @@ test "types in error messages are written as in punk" {
     // Nothing to change, or not a type.
     try std.testing.expectEqual(null, try mod.punkType(a, "Str"));
     try std.testing.expectEqual(null, try mod.punkType(a, "this is ( not a type"));
+test "equality takes records and tuples apart" {
+    try check(
+        \\type alias Entry = { key : Str, tree : Tree }
+        \\
+        \\type Tree
+        \\    = Leaf
+        \\    | Pair (Tree, Tree)
+        \\    | Labeled (List Entry)
+    ,
+        \\Entry : { key : Str, tree : Tree }
+        \\
+        \\Tree := [Leaf, Pair((Tree, Tree)), Labeled(List(Entry))].{
+        \\    is_eq = |punk_x, punk_y| match (punk_x, punk_y) {
+        \\        (Leaf, Leaf) => True
+        \\        (Pair(punk_a1), Pair(punk_b1)) => match (punk_a1, punk_b1) { ((punk_p1_1, punk_p1_2), (punk_q1_1, punk_q1_2)) => punk_p1_1 == punk_q1_1 and punk_p1_2 == punk_q1_2 }
+        \\        (Labeled(punk_a1), Labeled(punk_b1)) => (List.len(punk_a1) == List.len(punk_b1) and List.all(List.map2(punk_a1, punk_b1, |punk_x2, punk_y2| match (punk_x2, punk_y2) { ({ key: punk_p3_1, tree: punk_p3_2 }, { key: punk_q3_1, tree: punk_q3_2 }) => punk_p3_1 == punk_q3_1 and punk_p3_2 == punk_q3_2 }), |punk_r2| punk_r2))
+        \\        _ => False
+        \\    }
+        \\
+        \\    to_hash = |punk_x, punk_h| match punk_x {
+        \\        Leaf => Hasher.write_u64(punk_h, 0)
+        \\        Pair(punk_a1) => match punk_a1 { (punk_p4_1, punk_p4_2) => punk_p4_2.to_hash(punk_p4_1.to_hash(Hasher.write_u64(punk_h, 1))) }
+        \\        Labeled(punk_a1) => List.fold(punk_a1, Hasher.write_u64(Hasher.write_u64(punk_h, 2), List.len(punk_a1)), |punk_g5, punk_y5| match punk_y5 { { key: punk_p6_1, tree: punk_p6_2 } => punk_p6_2.to_hash(punk_p6_1.to_hash(punk_g5)) })
+        \\    }
+        \\}
+        \\
+    );
+}
+
+test "fn _ for the () of an annotation takes no parameters" {
+    try check(
+        \\greet! : () => {}
+        \\greet! = fn _ -> Stdout.line! "hi"
+        \\
+        \\answer : () -> I64
+        \\answer = fn _ -> 42
+        \\
+        \\ignore : I64 -> I64
+        \\ignore = fn _ -> 0
+        \\
+        \\main! = fn () ->
+        \\    greet! ()
+        \\    answer ()
+    ,
+        \\greet! : () => {}
+        \\greet! = || Stdout.line!("hi")
+        \\
+        \\answer : () -> I64
+        \\answer = || 42
+        \\
+        \\ignore : I64 -> I64
+        \\ignore = |_| 0
+        \\
+        \\main! = || {
+        \\    greet!()
+        \\    answer()
+        \\}
+        \\
+    );
 }
 
 test "functions, application, lambdas" {
@@ -1354,6 +1413,65 @@ test "fmt: types, tuples, leading commas, multi-line strings" {
         \\    ab
         \\      cd
         \\    """
+        \\
+    );
+}
+
+test "fmt: long lines are split, elm-format style" {
+    try checkFormat(
+        \\main! = fn () ->
+        \\    names = users |> List.filter (fn u -> u.age > 18) |> List.map (fn u -> u.name) |> List.sortBy identity
+        \\    point = { x = someLongFunctionName 1 2 3, y = anotherLongFunctionName 4 5 6, z = 0 }
+        \\    label = if List.isEmpty names then "nobody" else String.join ", " (List.map String.toUpper names)
+        \\    Stdout.line! (show (Decode.decodeString (Decode.field "counts" Decode.int) input) (fn n -> n))
+        \\    pair = (someLongFunctionName 1 2 3, anotherLongFunctionName 4 5 6, yetAnother 7 8)
+        \\    message = "a long string that does not fit on the line however it is laid out, so it stays"
+        \\
+        \\update : Msg -> Model -> Model
+        \\update = fn msg, model ->
+        \\    case msg of
+        \\        Rename name -> { model | name = name, renamed = True, history = List.append model.history model.name }
+        \\        Noop -> model
+        \\
+    ,
+        \\main! = fn () ->
+        \\    names =
+        \\        users
+        \\            |> List.filter (fn u -> u.age > 18)
+        \\            |> List.map (fn u -> u.name)
+        \\            |> List.sortBy identity
+        \\    point =
+        \\        { x = someLongFunctionName 1 2 3
+        \\        , y = anotherLongFunctionName 4 5 6
+        \\        , z = 0
+        \\        }
+        \\    label =
+        \\        if List.isEmpty names then
+        \\            "nobody"
+        \\        else
+        \\            String.join ", " (List.map String.toUpper names)
+        \\    Stdout.line!
+        \\        (show
+        \\            (Decode.decodeString (Decode.field "counts" Decode.int) input)
+        \\            (fn n -> n)
+        \\        )
+        \\    pair =
+        \\        ( someLongFunctionName 1 2 3
+        \\        , anotherLongFunctionName 4 5 6
+        \\        , yetAnother 7 8
+        \\        )
+        \\    message = "a long string that does not fit on the line however it is laid out, so it stays"
+        \\
+        \\update : Msg -> Model -> Model
+        \\update = fn msg, model ->
+        \\    case msg of
+        \\        Rename name ->
+        \\            { model
+        \\                | name = name
+        \\                , renamed = True
+        \\                , history = List.append model.history model.name
+        \\            }
+        \\        Noop -> model
         \\
     );
 }

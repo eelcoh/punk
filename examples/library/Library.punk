@@ -209,7 +209,9 @@ toggle = fn model ->
 markShown : Model -> Model
 markShown = fn model ->
     ids = List.map .id (shown model)
-    allMarked = not (List.isEmpty ids) && List.all (fn id -> List.member id model.marked) ids
+    allMarked =
+        not (List.isEmpty ids)
+            && List.all (fn id -> List.member id model.marked) ids
     if allMarked then
         { model | marked = List.filter (fn id -> not (List.member id ids)) model.marked }
     else
@@ -281,17 +283,28 @@ view = fn model ->
     total = List.length model.books
     count = List.length books
     View.column
-        [ View.height 1 (View.paragraph [[View.span [View.bold] "Crossload", View.plain " · Books"]])
+        [ View.height
+            1
+            (View.paragraph
+                [[View.span [View.bold] "Crossload", View.plain " · Books"]]
+            )
         , View.height 1 (View.paragraph [infoLine model count total])
-        , View.block (libraryTitle count total) (View.list model.selected (List.map (bookLine model) books))
-        , View.height 1 (View.paragraph [[View.span [View.fg Yellow] model.status]])
+        , View.block
+            (libraryTitle count total)
+            (View.list model.selected (List.map (bookLine model) books))
+        , View.height
+            1
+            (View.paragraph [[View.span [View.fg Yellow] model.status]])
         , View.height 1 (View.paragraph [[View.span [View.dim] "↑↓ move · Space mark · a all · s sort · / search · q quit"]])
         ]
 
 infoLine : Model -> Int -> Int -> View.Line
 infoLine = fn model, count, total ->
     if model.searching then
-        [View.span [View.fg Cyan] "/", View.plain model.query, View.span [View.fg Cyan] "▏"]
+        [ View.span [View.fg Cyan] "/"
+        , View.plain model.query
+        , View.span [View.fg Cyan] "▏"
+        ]
     else
         matching = if String.isEmpty model.query then "" else " · matching ${model.query}"
         marked = List.length model.marked
@@ -337,7 +350,17 @@ The series may be left out; places are `local`, `kobo` and `crosspoint`.
 -}
 book : D.Decoder Book
 book =
-    D.map5 (fn id, title, author, series, on -> { id, title, author, series, local = List.member "local" on, kobo = List.member "kobo" on, crossPoint = List.member "crosspoint" on })
+    D.map5
+        (fn id, title, author, series, on ->
+            { id
+            , title
+            , author
+            , series
+            , local = List.member "local" on
+            , kobo = List.member "kobo" on
+            , crossPoint = List.member "crosspoint" on
+            }
+        )
         (D.field "id" D.string)
         (D.field "title" D.string)
         (D.field "author" D.string)
@@ -359,7 +382,8 @@ compareBytes = fn a, b ->
         ([], []) -> EQ
         ([], _) -> LT
         (_, []) -> GT
-        ([x, ..xs], [y, ..ys]) -> if x == y then compareBytes xs ys else compare x y
+        ([x, ..xs], [y, ..ys]) ->
+            if x == y then compareBytes xs ys else compare x y
 
 {-| The text in exactly this many columns: cut with `…`, or padded. -}
 fit : Int -> Str -> Str
@@ -384,7 +408,8 @@ dropLast : Str -> Str
 dropLast = fn text ->
     bytes = Str.toUtf8 text
     List.range 1 4
-        |> List.filterMap (fn n -> Str.fromUtf8 (List.take (List.length bytes - n) bytes))
+        |> List.filterMap
+            (fn n -> Str.fromUtf8 (List.take (List.length bytes - n) bytes))
         |> List.head
         |> Maybe.withDefault ""
 

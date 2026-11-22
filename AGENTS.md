@@ -2,7 +2,8 @@
 
 punk is Eelco's language: Elm-like syntax, compiled by the Roc compiler,
 platforms with Rust hosts on ambit. Read `README.md` first, and
-`src/punk/llms.txt` for the language itself.
+`src/punk/llms.txt` for the language itself. `skills/` has a recipe per task
+(the check loop, an endpoint, a migration, a TUI screen).
 
 ## Rules
 

@@ -1,13 +1,13 @@
 //! Compiles the punk app (`../Shortener.punk`) with punkroc's compiler into `libapp.a`, and
 //! links it into this crate. The compiler is `zig-out/bin/punk` of this repository (run
-//! `zig build roc` first), or the one in the `PUNK` environment variable.
+//! `zig build` first), or the one in the `PUNK` environment variable.
 
 use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-    let repo = manifest.join("../../../..");
+    let repo = manifest.join("../../..");
     let app = manifest.join("../Shortener.punk");
     let out = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let punk = std::env::var_os("PUNK")
@@ -47,7 +47,7 @@ fn main() {
         .status()
         .unwrap_or_else(|e| {
             panic!(
-                "could not run {} ({e}); build the compiler with `zig build roc`, or set PUNK",
+                "could not run {} ({e}); build the compiler with `zig build`, or set PUNK",
                 punk.display()
             )
         });

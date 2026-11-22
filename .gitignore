@@ -1,0 +1,9 @@
+# Zig: the build, its cache and the packages it fetched (Roc among them).
+zig-out
+zig-pkg
+.zig-cache
+# Cargo builds of the hosts and the example apps.
+target
+# Built hosts and libraries (test/setup.sh puts them in platforms/*/targets).
+*.a
+*.o

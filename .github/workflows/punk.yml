@@ -1,22 +1,25 @@
-# punkroc's own CI (not upstream Roc's):
+# punk's CI.
 #
-# - golden: on every push to and PR into `punkroc`, build the compiler and
-#   the Rust host of platforms/cli, run the translator's and the host's unit
-#   tests and the golden tests of examples/punk/ (test/punk/golden.sh), and
-#   the Postgres and Mongo tests against postgres:16 and mongo:7 service containers.
+# - golden: on every push to and PR into `main`, build the compiler (Roc,
+#   pinned in build.zig.zon, with punk's seam), run the translator's and the
+#   hosts' unit tests, the golden tests of examples/ (test/golden.sh), and
+#   the server and terminal apps, with Postgres and Mongo in postgres:16 and
+#   mongo:7 containers.
 # - upstream: on the 1st and 15th of each month (and by hand), merge
-#   roc-lang/roc's main into a new branch, run the same tests on it, and open
-#   a PR into `punkroc` only when they pass. On a conflict or a failing test
-#   it opens an issue instead. It only ever fetches from roc-lang/roc;
-#   everything it pushes goes to this repository.
+#   roc-lang/roc's main into eelcoh/roc's `punkroc` branch (Roc with the
+#   places that call punk's seam), run the same tests with that Roc, and
+#   only when they pass push the merge to eelcoh/roc, pin it here and open a
+#   PR into `main`. On a conflict or a failing test it opens an issue
+#   instead. It only ever fetches from roc-lang/roc. Pushing to eelcoh/roc
+#   needs the secret ROC_PUSH_TOKEN (a token that may write to eelcoh/roc).
 
-name: punkroc
+name: punk
 
 on:
   push:
-    branches: [punkroc]
+    branches: [main]
   pull_request:
-    branches: [punkroc]
+    branches: [main]
   schedule:
     - cron: '23 5 1,15 * *'
   workflow_dispatch:
@@ -24,7 +27,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: punkroc-${{ github.event_name }}-${{ github.ref }}
+  group: punk-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -34,9 +37,8 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
-    # For the Postgres and Mongo tests of platforms/server and the apps on them.
     services:
-      postgres:
+      postgres: &postgres
         image: postgres:16
         env:
           POSTGRES_PASSWORD: punk
@@ -47,7 +49,7 @@ jobs:
           --health-interval 2s
           --health-timeout 5s
           --health-retries 30
-      mongo:
+      mongo: &mongo
         image: mongo:7
         ports:
           - 27017:27017
@@ -77,29 +79,7 @@ jobs:
           restore-keys: |
             zig-deps-${{ runner.os }}-${{ runner.arch }}-
       - name: Build and test
-        run: |
-          set -eu
-          zig test src/punk/test.zig
-          (cd platforms/roc-abi && cargo test --locked)
-          (cd platforms/cli/host && cargo test --locked)
-          (cd platforms/server/host && cargo test --locked)
-          (cd platforms/server/postgres && cargo test --locked)
-          (cd platforms/server/mongo && cargo test --locked)
-          (cd platforms/tui/host && cargo test --locked)
-          zig build roc
-          sh test/punk/setup.sh
-          sh test/punk/golden.sh
-          # The server apps: ambit's spec against the punk shortener, on a
-          # key-value store, on Postgres and on Mongo, and the notes kept apart by
-          # row-level security.
-          (cd examples/punk/shortener/server && cargo test --locked)
-          (cd examples/punk/shortener-postgres/server && cargo test --locked)
-          (cd examples/punk/shortener-mongo/server && cargo test --locked)
-          (cd examples/punk/notes/server && cargo test --locked)
-          # The terminal apps, on ambit's sim terminal: the counter and
-          # crossload's library view.
-          (cd examples/punk/counter/tui && cargo test --locked)
-          (cd examples/punk/library/tui && cargo test --locked)
+        run: sh test/ci.sh
 
   upstream:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -109,28 +89,9 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
-    # For the Postgres and Mongo tests of platforms/server and the apps on them.
     services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_PASSWORD: punk
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 2s
-          --health-timeout 5s
-          --health-retries 30
-      mongo:
-        image: mongo:7
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping:1}).ok'"
-          --health-interval 2s
-          --health-timeout 5s
-          --health-retries 30
+      postgres: *postgres
+      mongo: *mongo
     env:
       GH_TOKEN: ${{ github.token }}
       PUNK_TEST_POSTGRES: postgres://postgres:punk@localhost:5432/postgres
@@ -139,15 +100,20 @@ jobs:
       PUNK_REQUIRE_MONGO: "1"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6.0.2
         with:
+          repository: eelcoh/roc
           ref: punkroc
+          path: roc
           fetch-depth: 0
-      - name: Merge roc-lang/roc main
+          token: ${{ secrets.ROC_PUSH_TOKEN || github.token }}
+      - name: Merge roc-lang/roc main into eelcoh/roc punkroc
         id: merge
+        working-directory: roc
         run: |
           set -eu
-          git config user.name "punkroc-ci"
-          git config user.email "punkroc-ci@users.noreply.github.com"
+          git config user.name "punk-ci"
+          git config user.email "punk-ci@users.noreply.github.com"
           git remote add upstream https://github.com/roc-lang/roc.git
           # Never push to upstream.
           git remote set-url --push upstream no-push-to-upstream
@@ -162,46 +128,36 @@ jobs:
           fi
           git checkout -b "$branch"
           if ! git merge --no-edit -m "Merge roc-lang/roc main ($(git rev-parse --short FETCH_HEAD)) into punkroc" FETCH_HEAD; then
-            git diff --name-only --diff-filter=U > conflicts.txt
-            echo "conflict=yes" >> "$GITHUB_OUTPUT"
+            git diff --name-only --diff-filter=U > ../conflicts.txt
             exit 1
           fi
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - *setup_zig
       - *cache_deps
-      - name: Build and test the merge
+      - name: Build and test with the merged Roc
         if: steps.merge.outputs.nothing != 'yes'
-        run: |
-          set -eu
-          zig test src/punk/test.zig
-          (cd platforms/roc-abi && cargo test --locked)
-          (cd platforms/cli/host && cargo test --locked)
-          (cd platforms/server/host && cargo test --locked)
-          (cd platforms/server/postgres && cargo test --locked)
-          (cd platforms/server/mongo && cargo test --locked)
-          (cd platforms/tui/host && cargo test --locked)
-          zig build roc
-          sh test/punk/setup.sh
-          sh test/punk/golden.sh
-          # The server apps: ambit's spec against the punk shortener, on a
-          # key-value store, on Postgres and on Mongo, and the notes kept apart by
-          # row-level security.
-          (cd examples/punk/shortener/server && cargo test --locked)
-          (cd examples/punk/shortener-postgres/server && cargo test --locked)
-          (cd examples/punk/shortener-mongo/server && cargo test --locked)
-          (cd examples/punk/notes/server && cargo test --locked)
-          # The terminal apps, on ambit's sim terminal: the counter and
-          # crossload's library view.
-          (cd examples/punk/counter/tui && cargo test --locked)
-          (cd examples/punk/library/tui && cargo test --locked)
-      - name: Push the branch and open a PR
+        run: ZIG_BUILD_FLAGS="--fork=$PWD/roc" sh test/ci.sh
+      - name: Push the merge, pin it, and open a PR
         if: steps.merge.outputs.nothing != 'yes'
         run: |
           set -eu
           branch="${{ steps.merge.outputs.branch }}"
-          git push origin "$branch"
-          gh pr create --base punkroc --head "$branch" \
+          commit="${{ steps.merge.outputs.commit }}"
+          (cd roc && git push origin "$branch")
+          gh pr create --repo eelcoh/roc --base punkroc --head "$branch" \
             --title "Merge upstream Roc (${{ steps.merge.outputs.upstream }})" \
-            --body "Merge of roc-lang/roc main (${{ steps.merge.outputs.upstream }}) into punkroc. The translator tests and the golden tests of examples/punk/ passed on this merge ([run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}))."
+            --body "Merge of roc-lang/roc main into punkroc, for eelcoh/punk. punk's tests passed with it ([run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}))." || true
+          mkdir export && (cd roc && git archive HEAD) | tar -x -C export
+          hash=$(zig fetch ./export)
+          sed -i "s|roc#[0-9a-f]*\"|roc#$commit\"|; s|\.hash = \"roc-[^\"]*\"|.hash = \"$hash\"|" build.zig.zon
+          git config user.name "punk-ci"
+          git config user.email "punk-ci@users.noreply.github.com"
+          git checkout -b "$branch"
+          git commit -am "Pin Roc to upstream ${{ steps.merge.outputs.upstream }}"
+          git push origin "$branch"
+          gh pr create --base main --head "$branch" \
+            --title "Roc: upstream ${{ steps.merge.outputs.upstream }}" \
+            --body "Pins Roc to eelcoh/roc $commit: punkroc with roc-lang/roc main (${{ steps.merge.outputs.upstream }}) merged in. The tests passed with it ([run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}))."
       - name: Report a failed merge
         if: failure()
         run: |
@@ -209,6 +165,6 @@ jobs:
           [ -f conflicts.txt ] && conflicts="Conflicting files:
           $(sed 's/^/- /' conflicts.txt)"
           gh issue create \
-            --title "Upstream merge failed ($(date -u +%Y-%m-%d))" \
-            --body "Merging roc-lang/roc main into punkroc failed, so no PR was opened. See ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}.
+            --title "Upstream Roc merge failed ($(date -u +%Y-%m-%d))" \
+            --body "Merging roc-lang/roc main into eelcoh/roc punkroc, or testing punk with it, failed, so nothing was pinned. See ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}.
           $conflicts"

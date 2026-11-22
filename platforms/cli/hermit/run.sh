@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Spike: builds a punk app on the cli platform as a Hermit unikernel image, and boots it in QEMU.
 #
-#     sh platforms/cli/hermit/run.sh examples/punk/hermit/hello.punk
+#     sh platforms/cli/hermit/run.sh examples/hermit/hello.punk
 #
-# Run from the repo root, with `zig-out/bin/punk` built (zig build roc) or PUNK set. Needs
+# Run from the repo root, with `zig-out/bin/punk` built (zig build) or PUNK set. Needs
 # the Rust std for x86_64-unknown-hermit (see README.md) and qemu-system-x86_64. The image is written to
 # platforms/cli/hermit/target/x86_64-unknown-hermit/release/punk-cli-hermit.
 # Started with `sh`: go on in bash.
@@ -15,7 +15,7 @@ here=platforms/cli/hermit
 # The compiler: zig-out/bin/punk of this repository, or the one in PUNK (as the shortener's build.rs).
 punk=${PUNK:-zig-out/bin/punk}
 if [ ! -x "$punk" ]; then
-    echo "run.sh: no punk compiler at $punk. Build it with 'zig build roc' (from the repo root), or set PUNK."
+    echo "run.sh: no punk compiler at $punk. Build it with 'zig build' (from the repo root), or set PUNK."
     exit 1
 fi
 if ! rustup run 1.97.1 rustc --print sysroot >/dev/null 2>&1 \

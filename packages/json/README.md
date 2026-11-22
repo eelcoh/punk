@@ -5,7 +5,7 @@ punk itself. Decoders are written by hand: what the JSON looks like is part of
 the program, nothing is derived from a type.
 
 ```
-app [main!] { pf: platform "../../../platforms/cli/main.roc", json: "../../../packages/json/main.roc" }
+app [main!] { pf: platform "../../platforms/cli/main.roc", json: "../../packages/json/main.roc" }
 
 import json.Decode as D
 import json.Encode as E
@@ -47,4 +47,4 @@ Differences from Elm:
 The parser is strict JSON (RFC 8259): no comments, no trailing commas, no
 leading zeros, `\u` escapes with surrogate pairs, and text that must be UTF-8.
 
-`examples/punk/json/json.punk` shows all of it and is a golden test.
+`examples/json/json.punk` shows all of it and is a golden test.

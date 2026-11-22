@@ -1,4 +1,4 @@
-app [Model, Msg, main] { Platform: platform "../../../platforms/tui/main.roc", Json: "../../../packages/json/main.roc" }
+app [Model, Msg, main] { Platform: platform "../../platforms/tui/main.roc", Json: "../../packages/json/main.roc" }
 
 import Platform.Tui exposing [Event]
 import Platform.Cmd

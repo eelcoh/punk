@@ -25,7 +25,7 @@ is often caused by an earlier one.
 ## A program
 
 ```
-app [main!] { pf: platform "../../platforms/cli/main.roc" }
+app [main!] { pf: platform "../platforms/cli/main.roc" }
 
 import pf.Stdout
 
@@ -398,7 +398,7 @@ Log.info! : Str => {}                               -- also Log.warn!, Log.error
 Header names in a request are lower case. The app has no other way to reach
 the world: no files, no network, no environment. It is not run with
 `punk app.punk`: `punk build` makes an archive that a small Rust crate links
-and tests (see `platforms/server/README.md` and `examples/punk/shortener/`).
+and tests (see `platforms/server/README.md` and `examples/shortener/`).
 Annotate an effect with more arguments as `Settings -> Str => Result Response _`.
 
 ### Postgres: tables and queries
@@ -726,7 +726,7 @@ Effects are commands: the app has no `!` functions; the platform does the
 work off the screen's thread and answers with a `Msg`. Like a server, a
 terminal app is not run with `punk app.punk`: a small Rust crate links it
 and tests it on ambit's sim (see `platforms/tui/README.md` and
-`examples/punk/library/`). `compare` does not take `Str` (Roc's strings have
+`examples/library/`). `compare` does not take `Str` (Roc's strings have
 no order): compare `Str.toUtf8` bytes.
 
 ## Standard library
@@ -743,7 +743,7 @@ application.
 
 The shape of an Advent of Code solution: the example input in the file, the
 real input from a file argument. (The cookbook files live in
-`examples/punk/aoc2024/`, hence their longer platform path; some use the
+`examples/aoc2024/`, hence their longer platform path; some use the
 `test/fx/platform` test platform, which has `Stdout` too. Use
 `platforms/cli` for your own programs.)
 
@@ -781,7 +781,7 @@ Written by an agent that had only this file, on the first try.
 
 ### A terminal app
 
-The smallest one; `examples/punk/library/Library.punk` is crossload's
+The smallest one; `examples/library/Library.punk` is crossload's
 library view (sorting, marking, searching), with its tests on ambit's sim.
 
 @@example counter/Counter.punk@@

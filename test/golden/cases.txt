@@ -1,16 +1,16 @@
-# Golden tests for punkroc: every program in examples/punk/ is run and its
-# output compared with test/punk/golden/expected/<case>.out.
+# Golden tests for punkroc: every program in examples/ is run and its
+# output compared with test/golden/expected/<case>.out.
 #
 # One case per line:   <case>  <program>  [stdin]  [args...]
 #   case     name of the expected-output file (expected/<case>.out)
-#   program  path under examples/punk/
+#   program  path under examples/
 #   stdin    file from input/ fed to standard input, or - for none
 #   args     arguments for the program; files from input/ are in the
 #            working directory, so `day01.txt` works
 #
 # Each case runs in an empty directory with a copy of input/. A file the
 # program writes there ends up in the expected output too.
-# Update the expected output with:  sh test/punk/golden.sh --update
+# Update the expected output with:  sh test/golden.sh --update
 
 aoc2024/Day01           aoc2024/Day01.punk
 aoc2024/Day01-file      aoc2024/Day01.punk          -           day01.txt

@@ -21,7 +21,7 @@ ambit-caps-dir = { git = "https://github.com/eelcoh/ambit", rev = "b5f977178e408
 ambit-caps-dir-native = { git = "https://github.com/eelcoh/ambit", rev = "b5f977178e408a4aa96c75d7ed073bb2f65be414" }
 ambit-caps-native = { git = "https://github.com/eelcoh/ambit", rev = "b5f977178e408a4aa96c75d7ed073bb2f65be414" }
 ambit-tui-native = { git = "https://github.com/eelcoh/ambit", rev = "b5f977178e408a4aa96c75d7ed073bb2f65be414" }
-punk-tui = { path = "../../../../platforms/tui/host" }
+punk-tui = { path = "../../../platforms/tui/host" }
 
 [dev-dependencies]
 ambit-caps-sim = { git = "https://github.com/eelcoh/ambit", rev = "b5f977178e408a4aa96c75d7ed073bb2f65be414" }

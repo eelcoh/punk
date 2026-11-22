@@ -5,30 +5,30 @@ its host, and the host of upstream's `test/fx/platform` that some examples
 use, once (and after changing a host), from the repository root:
 
 ```
-zig build roc
-sh test/punk/setup.sh
+zig build
+sh test/setup.sh
 ```
 
 ## Golden tests
 
-`golden.sh` runs every program in `examples/punk/` and compares its output
+`golden.sh` runs every program in `examples/` and compares its output
 (stdout, exit code and any file it writes) with `golden/expected/`. Which
 program runs with which input is in `golden/cases.txt`; a new example without
 a case there makes the test fail.
 
 ```
-zig build roc
-sh test/punk/setup.sh
-sh test/punk/golden.sh            # check
-sh test/punk/golden.sh --update   # after an intended change in output
+zig build
+sh test/setup.sh
+sh test/golden.sh            # check
+sh test/golden.sh --update   # after an intended change in output
 ```
 
-A server app (`examples/punk/shortener/`) can't run as a program: `golden.sh`
+A server app (`examples/shortener/`) can't run as a program: `golden.sh`
 only type-checks it. Its own crate runs it against ambit's spec:
 
 ```
-zig build roc
-(cd examples/punk/shortener/server && cargo test)
+zig build
+(cd examples/shortener/server && cargo test)
 ```
 
 The `punkroc` workflow (`.github/workflows/punk.yml`) runs these, together

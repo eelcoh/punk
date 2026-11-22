@@ -8,7 +8,7 @@ punk app is the Elm architecture: a model, an `update` for every event, and a
 `view` that says what the screen shows.
 
 ```
-app [Model, Msg, main] { Platform: platform "../../../platforms/tui/main.roc" }
+app [Model, Msg, main] { Platform: platform "../../platforms/tui/main.roc" }
 
 import Platform.Tui exposing [Event]
 import Platform.Cmd
@@ -94,14 +94,14 @@ assert!(sim.screen().contains("Library · 2 of 6"));
 
 Examples, each with such a crate in its `tui/` folder:
 
-- `examples/punk/counter/`: the counter above.
-- `examples/punk/library/`: the library view of
+- `examples/counter/`: the counter above.
+- `examples/library/`: the library view of
   [crossload](https://github.com/eelcoh/crossload) (sorting, marking,
   searching), with its tests on the sim.
 
 ```
-zig build roc
-cd examples/punk/library/tui
+zig build
+cd examples/library/tui
 cargo test                     # on ambit's sim
 cargo run -- ..                # on your terminal: the books of ../library.json
 ```

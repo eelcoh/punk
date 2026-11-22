@@ -6,7 +6,7 @@ step 5, goal C): it answers "can a punk app be linked for
 `x86_64-unknown-hermit`?". The answer is yes; see "What it shows" below.
 
 ```
-sh platforms/cli/hermit/run.sh examples/punk/hermit/hello.punk
+sh platforms/cli/hermit/run.sh examples/hermit/hello.punk
 ```
 
 ```
@@ -35,7 +35,7 @@ hangs in QEMU's `qemu64` CPU model, which is what Hermit (and ambit) use.
 
 ## Setup
 
-First the compiler: `zig build roc` in the repo root (or set `PUNK` to a
+First the compiler: `zig build` in the repo root (or set `PUNK` to a
 `punk` binary). Then the same as ambit's hermit backend:
 
 - Rust 1.97.1 (`rust-toolchain.toml`) with the prebuilt std for Hermit:

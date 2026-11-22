@@ -1,0 +1,23 @@
+.{
+    .name = .punk,
+    .version = "0.1.0",
+    // The Zig of the Roc compiler below; test/setup.sh checks it.
+    .minimum_zig_version = "0.17.1",
+    .fingerprint = 0x395f2bc2402524ec, // Changing this has security and trust implications.
+    .dependencies = .{
+        // Roc, as eelcoh/roc's branch roc-basis has it: upstream Roc plus the few
+        // places where the compiler calls punk's seam. Bumped by a PR when the
+        // golden tests pass (see .github/workflows/punk.yml).
+        .roc = .{
+            .url = "git+https://github.com/eelcoh/roc#38cfa3034799d7466502bc83981fd285efad6f32",
+            .hash = "roc-0.0.0-NAC9w8pYCQXGooAvyQ8z5mjoyv7Ax4aNoE0ytytUpQzt",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "platforms",
+        "packages",
+    },
+}

@@ -1,4 +1,4 @@
-app [handle!] { pf: platform "../../../platforms/server/main.roc" }
+app [handle!] { pf: platform "../../platforms/server/main.roc" }
 
 import pf.Http exposing [Request, Response]
 import pf.Db

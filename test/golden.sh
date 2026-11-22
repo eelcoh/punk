@@ -1,27 +1,27 @@
 #!/bin/sh
-# Golden tests: runs the punkroc examples listed in test/punk/golden/cases.txt
+# Golden tests: runs the punkroc examples listed in test/golden/cases.txt
 # and compares their output (stdout, exit code and any file they write) with
-# test/punk/golden/expected/. Run from the repo root, after `zig build roc`
-# and `sh test/punk/setup.sh`:
+# test/golden/expected/. Run from the repo root, after `zig build`
+# and `sh test/setup.sh`:
 #
-#     sh test/punk/golden.sh            check
-#     sh test/punk/golden.sh --update   write the expected output anew
+#     sh test/golden.sh            check
+#     sh test/golden.sh --update   write the expected output anew
 #
 # Server and terminal apps are only type-checked here (their crate's cargo test runs them).
 # A schema.sql next to an app has to be up to date (`punk check --schema`).
-# It fails as well when a program in examples/punk/ has no case, so that a
+# It fails as well when a program in examples/ has no case, so that a
 # new example cannot be forgotten, when a .punk file there is not laid out
 # as `punk fmt` would, and when src/punk/llms.txt is out of date.
 set -u
 
 root=$(pwd)
-roc="$root/zig-out/bin/roc"
-golden="$root/test/punk/golden"
+roc="$root/zig-out/bin/punk"
+golden="$root/test/golden"
 update=no
 [ "${1:-}" = "--update" ] && update=yes
 
 if [ ! -x "$roc" ]; then
-    echo "no $roc: run 'zig build roc' first"
+    echo "no $roc: run 'zig build' first"
     exit 1
 fi
 
@@ -40,7 +40,7 @@ run_case() {
     ls "$dir" > "$work/before"
     actual="$work/actual"
     if [ "$stdin" = "-" ]; then input=/dev/null; else input="$golden/input/$stdin"; fi
-    (cd "$dir" && timeout 600 "$roc" "$root/examples/punk/$program" "$@" < "$input" > "$actual" 2> "$work/stderr")
+    (cd "$dir" && timeout 600 "$roc" "$root/examples/$program" "$@" < "$input" > "$actual" 2> "$work/stderr")
     code=$?
     echo "exit $code" >> "$actual"
     # Files the program wrote.
@@ -80,9 +80,9 @@ done < "$work/cases"
 # run here: it is an archive that its Rust crate links and tests (cargo test
 # in its server/ or tui/ folder, on ambit's spec or sim). Here it only has to
 # type-check.
-server_apps=$(cd examples/punk && grep -lE '^app.*platforms/(server|tui)/main.roc' $(find . -name '*.punk') | sed 's|^\./||' | sort)
+server_apps=$(cd examples && grep -lE '^app.*platforms/(server|tui)/main.roc' $(find . -name '*.punk') | sed 's|^\./||' | sort)
 for f in $server_apps; do
-    if "$roc" check "examples/punk/$f" > "$work/check" 2>&1; then
+    if "$roc" check "examples/$f" > "$work/check" 2>&1; then
         echo "ok   check $f"
         passed=$((passed + 1))
     else
@@ -94,7 +94,7 @@ done
 
 # A schema.sql next to an app with tables is up to date: `punk check
 # --schema` (run on a copy, as it writes schema.sql) has no version to add.
-for schema in $(find examples/punk -name schema.sql | sort); do
+for schema in $(find examples -name schema.sql | sort); do
     app=$(grep -l '^table ' "$(dirname "$schema")"/*.punk 2>/dev/null | head -n 1)
     copy="$work/schema/$(dirname "$schema")"
     mkdir -p "$copy"
@@ -112,16 +112,16 @@ for schema in $(find examples/punk -name schema.sql | sort); do
     fi
 done
 
-# Every other app in examples/punk/ needs at least one case.
-for f in $(cd examples/punk && grep -l '^app' $(find . -name '*.punk') | sed 's|^\./||' | grep -vxF "$server_apps" | sort); do
+# Every other app in examples/ needs at least one case.
+for f in $(cd examples && grep -l '^app' $(find . -name '*.punk') | sed 's|^\./||' | grep -vxF "$server_apps" | sort); do
     if ! awk '{print $2}' "$work/cases" | grep -qxF "$f"; then
-        echo "FAIL examples/punk/$f has no case in test/punk/golden/cases.txt"
+        echo "FAIL examples/$f has no case in test/golden/cases.txt"
         failed=$((failed + 1))
     fi
 done
 
-# Every .punk file in examples/punk/ is formatted as `punk fmt` lays it out.
-unformatted=$("$roc" fmt --check $(find examples/punk -name '*.punk' | sort) 2>&1)
+# Every .punk file in examples/ is formatted as `punk fmt` lays it out.
+unformatted=$("$roc" fmt --check $(find examples -name '*.punk' | sort) 2>&1)
 if [ $? -ne 0 ]; then
     echo "FAIL punk fmt --check:"
     echo "$unformatted" | sed 's/^/     /'

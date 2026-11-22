@@ -6,7 +6,7 @@ ambit owns the listener, the threads and the limits (body size, timeouts, a
 full queue answers 503), and calls the punk app once per request.
 
 ```
-app [handle!] { Platform: platform "../../../platforms/server/main.roc", Json: "../../../packages/json/main.roc" }
+app [handle!] { Platform: platform "../../platforms/server/main.roc", Json: "../../packages/json/main.roc" }
 
 import Platform.Http exposing [Request, Response]
 import Platform.Kv
@@ -36,9 +36,9 @@ handle! = fn req ->
 | `Filter` | `equals`, `notEquals`, `lessThan`, `atMost`, `greaterThan`, `atLeast`, `oneOf`, `exists`, `missing` (each `"field" value`), `all [..]`, `any [..]`, `everything` |
 | `Update` | `set "field" value`, `unset "field"`, `increment "field" n` |
 
-The example app is ambit's link shortener: `examples/punk/shortener/`, and
-the same app with its links in Postgres: `examples/punk/shortener-postgres/`,
-and in Mongo: `examples/punk/shortener-mongo/`.
+The example app is ambit's link shortener: `examples/shortener/`, and
+the same app with its links in Postgres: `examples/shortener-postgres/`,
+and in Mongo: `examples/shortener-mongo/`.
 
 ## Postgres: tables and queries
 
@@ -117,7 +117,7 @@ findLink = fn id ->
   own: `Postgres::new` refuses a superuser or a role with `BYPASSRLS`, which
   skip row-level security. The wiring makes the tables with `Owner` (a role
   that owns them) and lets the app's role use them with `Owner::grant`;
-  `examples/punk/notes` shows it, and `punk_server_postgres::testing` sets
+  `examples/notes` shows it, and `punk_server_postgres::testing` sets
   up both roles for tests.
 - **The schema comes from the program, with verified migrations.**
   `schema.sql` next to the app is a history of versions, which `punk check
@@ -141,7 +141,7 @@ findLink = fn id ->
   does. Once it is in `schema.sql`, remove the `migrate` (P405 says so). The
   wiring applies the versions with `Owner::migrate`: each once, in order, in a
   transaction of its own, recorded in the table `punk_schema`; a version that
-  changed after it was applied is an error. `examples/punk/notes` has two
+  changed after it was applied is an error. `examples/notes` has two
   versions.
 - **Transactions.** `Db.transaction! (fn _ -> ...)` runs a function of
   queries in one transaction, on one connection: `Ok` commits it, `Err`
@@ -150,7 +150,7 @@ findLink = fn id ->
   as someone else is error `25000`). Transactions don't nest (`25001`), and
   one the app leaves open rolls back at the end of the request. In the host
   it is `Database::begin`, which gives a `Transaction` (`run`, `commit`;
-  dropping it rolls back). `examples/punk/notes` pins one note per user this
+  dropping it rolls back). `examples/notes` pins one note per user this
   way.
 - **SQL by hand stays.** For what the language can't do yet (left joins,
   aggregates, grouping), `Sql.query` and `Row` below are the escape hatch.
@@ -345,7 +345,7 @@ archive (`output: Archive` in `main.roc`), and a small Rust crate next to the
 app links that archive with this host and is the program:
 
 ```
-examples/punk/shortener/
+examples/shortener/
     Shortener.punk          the app
     server/
         Cargo.toml          depends on platforms/server/host and ambit
@@ -358,8 +358,8 @@ examples/punk/shortener/
 ```
 
 ```
-zig build roc
-cd examples/punk/shortener/server
+zig build
+cd examples/shortener/server
 cargo test                  # ambit's spec, against the punk app
 cargo run --release         # http://localhost:8080
 ```

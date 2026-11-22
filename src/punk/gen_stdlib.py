@@ -1,6 +1,6 @@
 """Prints the builtin table for src/punk/stdlib.zig from Builtin.roc.
 
-    python3 src/punk/gen_stdlib.py src/build/roc/Builtin.roc
+    python3 src/punk/gen_stdlib.py zig-out/share/roc/Builtin.roc
 
 Paste the output between `initComptime(.{` and `});` at the end of stdlib.zig.
 """

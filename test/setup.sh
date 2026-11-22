@@ -4,12 +4,10 @@
 #
 # - platforms/cli: punkroc's own platform. Its host is Rust, on ambit
 #   (platforms/cli/host), built with cargo.
-# - test/fx/platform: upstream's test platform, which some examples use. Its
-#   host is Zig.
 #
 # Run from the repo root:
 #
-#     sh test/punk/setup.sh
+#     sh test/setup.sh
 #
 set -e
 
@@ -28,30 +26,14 @@ if ! command -v cargo > /dev/null; then
     exit 1
 fi
 
-newest() { ls -t "$@" 2>/dev/null | head -n 1; }
-
 # This computer, as roc names it, and as Rust names it.
 case "$(uname -s)-$(uname -m)" in
-    Linux-x86_64) target=x64musl; triple=x86_64-unknown-linux-musl; arch=x86_64 ;;
-    Linux-aarch64 | Linux-arm64) target=arm64musl; triple=aarch64-unknown-linux-musl; arch=aarch64 ;;
+    Linux-x86_64) target=x64musl; triple=x86_64-unknown-linux-musl ;;
+    Linux-aarch64 | Linux-arm64) target=arm64musl; triple=aarch64-unknown-linux-musl ;;
     Darwin-x86_64) target=x64mac; triple=x86_64-apple-darwin ;;
     Darwin-arm64) target=arm64mac; triple=aarch64-apple-darwin ;;
     *) echo "punkroc's platforms don't run on $(uname -s) $(uname -m) yet."; exit 1 ;;
 esac
-
-# Upstream's fx platform (Zig).
-zig build build-test-hosts -Dplatform=fx
-host=""
-for lib in $(ls -t $(find .zig-cache/o -name libhost.a)); do
-    if ar t "$lib" 2>/dev/null | grep -q "test_platform_fx_host_${target}_zcu.o"; then host="$lib"; break; fi
-done
-fx=test/fx/platform/targets/$target
-mkdir -p "$fx"
-cp "$host" "$fx/libhost.a"
-case $target in
-    *musl) cp "$(newest $(find .zig-cache/o -name "rcrt1_$arch.o"))" "$fx/rcrt1.o" ;;
-esac
-echo "fx platform ready for $target"
 
 # punkroc's cli platform (Rust, on ambit). Built from its own folder, so that
 # rustup uses the Rust of its rust-toolchain.toml. On Linux the program is

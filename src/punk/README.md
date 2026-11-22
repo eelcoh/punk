@@ -41,10 +41,10 @@ export PATH="$PWD/zig-aarch64-macos-0.17.1:$PATH"
 zig version
 ```
 
-or `pip install ziglang==0.17.1` and `python3 -m ziglang build roc`.
+or `pip install ziglang==0.17.1` and `python3 -m ziglang build`.
 Homebrew's `zig` is often another version. A shell script (`sh ...`) can
 find another `zig` than your interactive shell, because it does not read
-`~/.zshrc`; `test/punk/setup.sh` checks the version first.
+`~/.zshrc`; `test/setup.sh` checks the version first.
 
 ## In the compiler
 
@@ -52,14 +52,17 @@ The compiler translates `.punk` files as it reads them, so everything after
 the parser sees ordinary Roc. All of punk's connection to the Roc compiler is
 in `src/punk/roc/` (the seam); the rest of `src/punk/` uses no Roc code. The
 seam puts a layer over the build's filesystem (`src/punk/roc/vfs.zig`) that
-translates `.punk` files, and Roc's own files only call into it from a few
-places marked `// punkroc:` (`build.zig`, `src/build/modules.zig`,
-`src/cli/main.zig`, `src/cli/cli_args.zig`, `src/compile/compile_build.zig`).
+translates `.punk` files. The compiler itself is Roc, from eelcoh/roc's
+`punkroc` branch, pinned in `build.zig.zon`: upstream Roc plus the few places,
+marked `// punkroc:`, where it calls the seam (`build.zig`,
+`src/build/modules.zig`, `src/cli/main.zig`, `src/cli/cli_args.zig`,
+`src/compile/compile_build.zig`). On its own that Roc builds with a stand-in
+seam; `zig build` here builds it with `-Dpunk=src/`.
 
 ```
-zig build roc
-zig-out/bin/roc examples/punk/aoc_day2_functional.punk
-zig-out/bin/roc check examples/punk/aoc_day2_functional.punk
+zig build
+zig-out/bin/punk examples/aoc_day2_functional.punk
+zig-out/bin/punk check examples/aoc_day2_functional.punk
 ```
 
 `import Foo` finds `Foo.punk` when there is no `Foo.roc` next to it: the
@@ -75,7 +78,7 @@ double = fn x ->                       }
 
 When the module declares `type Shape` with the module's own name, that type
 carries the block (`Shape := [Circle(F64), ...].{ area = ... }`). See
-`examples/punk/imports/` and "Roc compatibility" below.
+`examples/imports/` and "Roc compatibility" below.
 
 Error messages are about the `.punk` file, not its Roc translation. The
 translator keeps a source map (where each name, literal and operator of the
@@ -84,7 +87,7 @@ with it before it is shown (`src/punk/roc/report.zig`): positions and
 source lines come from the `.punk` file, and names are spelled as in punkroc.
 
 ```
-── ✗ name not in scope ─────────────────── examples/punk/app.punk:20:9
+── ✗ name not in scope ─────────────────── examples/app.punk:20:9
 
 Nothing is named notDefined in this scope.
 
@@ -98,9 +101,9 @@ A part of the translation that punkroc reordered (`xs |> List.map f` is
 A syntax error in a `.punk` file is reported like the compiler's own errors:
 
 ```
-── ✗ syntax error ──────────────────────── examples/punk/app.punk:7:22
+── ✗ syntax error ──────────────────────── examples/app.punk:7:22
 
-There is a syntax error in examples/punk/app.punk.
+There is a syntax error in examples/app.punk.
 
 Stdout.line! "hi"
                  ^
@@ -110,7 +113,7 @@ expected ')' but found 'end of file'
 
 ## For agents: `punk fmt`, `punk check --json`, `llms.txt`
 
-`zig build roc` also makes `zig-out/bin/punk`, the same compiler under
+`zig build` also makes `zig-out/bin/punk`, the same compiler under
 punkroc's name.
 
 **`punk fmt file.punk ...`** lays `.punk` files out in one canonical form,
@@ -123,7 +126,7 @@ files that are not formatted and fails. The formatter works on tokens, keeps
 every comment, and checks its own work: when the Roc translation of the
 result differs from that of the original (ignoring whitespace), it leaves the
 file alone and says so. `punk2roc --fmt file.punk` prints the formatted file.
-The golden tests check that every file in `examples/punk/` is formatted.
+The golden tests check that every file in `examples/` is formatted.
 
 **`punk check --json file.punk`** writes the problems as one JSON document on
 stdout (`src/punk/roc/json.zig`): per problem the severity, a stable `code`
@@ -138,7 +141,7 @@ the tools, the syntax, the differences from Elm and from Roc, the error
 codes, the platform, the standard library's signatures and a cookbook. The
 signatures are generated from `stdlib.zig`, `elm.zig` and `Builtin.roc` (as
 punkroc sees them: camelCase, the value last, curried), and the cookbook
-examples are files in `examples/punk/` that the golden tests run. After a
+examples are files in `examples/` that the golden tests run. After a
 change, run `python3 src/punk/gen_llms.py`; the golden tests fail when
 `llms.txt` is out of date.
 
@@ -149,7 +152,7 @@ Try the translator on its own, without building the rest of the compiler:
 ```
 zig test src/punk/test.zig
 zig build-exe src/punk/main.zig -femit-bin=punk2roc
-./punk2roc examples/punk/aoc_day2_functional.punk
+./punk2roc examples/aoc_day2_functional.punk
 ```
 
 ## Currying and data-last pipes (step 3)
@@ -206,7 +209,7 @@ below). Arguments of a partial application that are not plain values are
 computed once, before the lambda. Calls to functions it knows nothing about
 (lambda parameters, record fields) pass all
 arguments at once, as in Roc; partial application of those does not work.
-See `examples/punk/currying.punk`.
+See `examples/currying.punk`.
 
 ## Folds instead of loops
 
@@ -279,7 +282,7 @@ keep Roc's order and take all their arguments at once.
 The switch `rotate_roc_modules` in `translate.zig` turns the reordering for
 Roc modules off.
 
-`examples/punk/imports/` has all three directions: `app.punk` uses the
+`examples/imports/` has all three directions: `app.punk` uses the
 punkroc modules `Math` and `Shape`, the Roc module `Text.roc`, and
 `Report.roc`, a Roc module that uses `Math.punk`.
 
@@ -380,7 +383,7 @@ so `a + b` still crashes on overflow, as in Roc.
 `platforms/tui` for terminal apps in the Elm architecture: `init`, `update`
 and `view`, with effects as `Cmd`s (`File.read path Loaded`), on ambit's
 tui platform. See `platforms/tui/README.md` and
-`examples/punk/library/` (crossload's library view).
+`examples/library/` (crossload's library view).
 
 Package names may be capitalized, as modules are: `{ Platform: platform
 "...", Json: "..." }` and `import Platform.Http`, `import Json.Decode as D`.
@@ -421,7 +424,7 @@ The translator gives Roc its lowercase names (`pf`, `json`).
 
   is `"3   4\n4   3"`.
 
-`examples/punk/aoc2024/` has several Advent of Code days written this way.
+`examples/aoc2024/` has several Advent of Code days written this way.
 
 Known gaps: comments inside expressions (only comments before definitions
 and statements are kept), `::` list patterns, operator sections such as `(+)`.

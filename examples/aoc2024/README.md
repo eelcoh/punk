@@ -5,13 +5,13 @@ functional style (pipelines, recursion, no `var`). `Grid.punk` is a small
 punkroc module that days 4 and 6 share.
 
 ```
-zig build roc
-zig-out/bin/roc examples/punk/aoc2024/Day06.punk
+zig build
+zig-out/bin/punk examples/aoc2024/Day06.punk
 ```
 
-Day 1 runs on punkroc's own platform (`test/punk/`), which can read files:
-`zig-out/bin/roc examples/punk/aoc2024/Day01.punk input.txt` solves your own
-puzzle input (run `sh test/punk/setup.sh` once first).
+Day 1 runs on punkroc's own platform (`test/`), which can read files:
+`zig-out/bin/punk examples/aoc2024/Day01.punk input.txt` solves your own
+puzzle input (run `sh test/setup.sh` once first).
 
 | Day | Answers (example) | Shows |
 |-----|-------------------|-------|

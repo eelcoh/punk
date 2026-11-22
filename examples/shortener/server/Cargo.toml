@@ -20,7 +20,7 @@ path = "src/main.rs"
 [dependencies]
 ambit-caps = { git = "https://github.com/eelcoh/ambit", rev = "b5f977178e408a4aa96c75d7ed073bb2f65be414" }
 ambit-server = { git = "https://github.com/eelcoh/ambit", rev = "b5f977178e408a4aa96c75d7ed073bb2f65be414" }
-punk-server = { path = "../../../../platforms/server/host" }
+punk-server = { path = "../../../platforms/server/host" }
 
 # The wiring on Linux and macOS (src/main.rs): ambit's native backend, locked down.
 [target.'cfg(not(target_os = "hermit"))'.dependencies]

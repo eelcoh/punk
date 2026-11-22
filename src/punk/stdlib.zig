@@ -10,7 +10,7 @@
 //! Functions of other modules (U64, Num, platform modules, packages) keep
 //! Roc's order and are called with all their arguments at once.
 //!
-//! Generated from src/build/roc/Builtin.roc; see `gen_stdlib.py`.
+//! Generated from Roc's Builtin.roc (zig-out/share/roc/Builtin.roc after `zig build`); see `gen_stdlib.py`.
 
 const std = @import("std");
 const elm = @import("elm.zig");

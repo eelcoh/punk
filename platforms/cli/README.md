@@ -15,7 +15,7 @@ solutions. Its host is written in Rust, on [ambit](https://github.com/eelcoh/amb
 | `Random` | `u64! : () => U64` (64 random bits from the OS) |
 
 ```
-app [main!] { pf: platform "../../platforms/cli/main.roc" }
+app [main!] { pf: platform "../platforms/cli/main.roc" }
 
 import pf.Stdout
 import pf.File
@@ -47,10 +47,10 @@ Needs Zig 0.17.1 (for the compiler) and Rust (for the host, the version in
 repository root:
 
 ```
-zig build roc
-sh test/punk/setup.sh
-zig-out/bin/punk examples/punk/aoc2024/Day01.punk input.txt
-zig-out/bin/punk examples/punk/platform/io.punk < input.txt
+zig build
+sh test/setup.sh
+zig-out/bin/punk examples/aoc2024/Day01.punk input.txt
+zig-out/bin/punk examples/platform/io.punk < input.txt
 ```
 
 `setup.sh` builds `host/` with cargo for this computer and copies it into

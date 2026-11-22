@@ -1,0 +1,183 @@
+app [handle!] { Platform: platform "server", Json: "../../packages/json/main.roc" }
+
+import Platform.Http exposing [Request, Response]
+import Platform.Db
+import Platform.Random
+import Platform.Log
+import Json.Decode as D
+import Json.Encode as E
+import Json.Value
+
+{-| A JSON API for a todo list, with its todos in Postgres. It is the
+example of the tutorial page "A JSON API with Postgres"
+(docs/tutorial/src/json-api.md).
+
+- `GET /todos`: all todos, as a JSON array, by title.
+- `POST /todos` with `{"title": "..."}`: a new todo, 201 with the todo.
+- `GET /todos/<id>`: one todo, 404 if there is none.
+- `PUT /todos/<id>` with `{"title": "...", "done": true}`: changes it.
+- `DELETE /todos/<id>`: removes it, 204.
+-}
+
+-- ANCHOR: table
+type alias Todo =
+    { id : Str
+    , title : Str
+    , done : Bool
+    }
+
+-- The todos, one row each. This API has no users: everyone may do
+-- everything. (See examples/notes for policies per user.)
+table todos : Todo
+    key id
+    read everyone
+    insert everyone
+    update everyone
+    delete everyone
+
+-- ANCHOR_END: table
+
+-- ANCHOR: queries
+-- Queries: each one is a single SQL statement.
+allTodos : Db.Query (List Todo)
+allTodos =
+    todos
+        |> Db.sortBy (fn todo -> todo.title)
+        |> Db.all
+
+findTodo : Str -> Db.Query (Maybe Todo)
+findTodo = fn id ->
+    todos
+        |> Db.filter (fn todo -> todo.id == id)
+        |> Db.first
+
+changeTodo : Str -> Change -> Db.Query Int
+changeTodo = fn id, c ->
+    todos
+        |> Db.filter (fn todo -> todo.id == id)
+        |> Db.update (fn todo -> { todo | title = c.title, done = c.done })
+
+removeTodo : Str -> Db.Query Int
+removeTodo = fn id ->
+    todos
+        |> Db.filter (fn todo -> todo.id == id)
+        |> Db.delete
+
+-- ANCHOR_END: queries
+
+-- ANCHOR: json
+-- JSON in: what a client sends.
+type alias Change =
+    { title : Str
+    , done : Bool
+    }
+
+newTitle : D.Decoder Str
+newTitle =
+    D.field "title" D.string
+
+change : D.Decoder Change
+change =
+    D.map2 (fn title, done -> { title, done })
+        (D.field "title" D.string)
+        (D.field "done" D.bool)
+
+-- JSON out: what a client gets.
+encodeTodo : Todo -> Value
+encodeTodo = fn todo ->
+    E.object
+        [ ("id", E.string todo.id)
+        , ("title", E.string todo.title)
+        , ("done", E.bool todo.done)
+        ]
+
+-- ANCHOR_END: json
+
+-- ANCHOR: routes
+handle! : Request => Response
+handle! = fn req ->
+    case route! req of
+        Ok response -> response
+        Err (PgErr problem) ->
+            Log.error! "storage failed (${problem.code}): ${problem.message}"
+            problemJson 503 "storage unavailable"
+        Err (RowErr problem) ->
+            Log.error! "a stored todo doesn't fit: ${problem}"
+            problemJson 500 "internal error"
+
+route! : Request => Result Response _
+route! = fn req ->
+    case (req.method, Str.splitOn "/" req.path) of
+        ("GET", ["", "todos"]) -> list! ()
+        ("POST", ["", "todos"]) -> create! req.body
+        ("GET", ["", "todos", id]) -> show! id
+        ("PUT", ["", "todos", id]) -> update! id req.body
+        ("DELETE", ["", "todos", id]) -> remove! id
+        _ -> Ok (problemJson 404 "not found")
+
+-- ANCHOR_END: routes
+
+-- ANCHOR: handlers
+list! : () => Result Response _
+list! = fn () ->
+    found = try Db.run! allTodos
+    Ok (json 200 (E.list encodeTodo found))
+
+create! : List U8 => Result Response _
+create! = fn body ->
+    case decodeBody newTitle body of
+        Err problem -> Ok (problemJson 400 problem)
+        Ok title ->
+            todo = { id = "t${U64.toStr (Random.u64! ())}", title, done = False }
+            _ = try Db.run! (Db.insert todo todos)
+            Ok (json 201 (encodeTodo todo))
+
+show! : Str => Result Response _
+show! = fn id ->
+    case try Db.run! (findTodo id) of
+        Nothing -> Ok (problemJson 404 "no todo ${id}")
+        Just todo -> Ok (json 200 (encodeTodo todo))
+
+update! : Str -> List U8 => Result Response _
+update! = fn id, body ->
+    case decodeBody change body of
+        Err problem -> Ok (problemJson 400 problem)
+        Ok c ->
+            count = try Db.run! (changeTodo id c)
+            if count == 0 then
+                Ok (problemJson 404 "no todo ${id}")
+            else
+                todo = { id, title = c.title, done = c.done }
+                Ok (json 200 (encodeTodo todo))
+
+remove! : Str => Result Response _
+remove! = fn id ->
+    count = try Db.run! (removeTodo id)
+    if count == 0 then
+        Ok (problemJson 404 "no todo ${id}")
+    else
+        Ok { status = 204, headers = [], body = [] }
+
+-- ANCHOR_END: handlers
+
+-- ANCHOR: helpers
+-- The body as JSON, decoded; the error says what was wrong.
+decodeBody : D.Decoder a -> List U8 -> Result a Str
+decodeBody = fn decoder, body ->
+    case Str.fromUtf8 body of
+        Err _ -> Err "the body is not UTF-8"
+        Ok text ->
+            D.decodeString decoder text
+                |> Result.mapError D.errorToString
+
+json : U16 -> Value -> Response
+json = fn status, value ->
+    { status
+    , headers = [("content-type", "application/json")]
+    , body = Str.toUtf8 (E.encode 0 value)
+    }
+
+problemJson : U16 -> Str -> Response
+problemJson = fn status, message ->
+    json status (E.object [("error", E.string message)])
+-- ANCHOR_END: helpers

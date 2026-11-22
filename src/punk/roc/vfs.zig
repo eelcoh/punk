@@ -108,7 +108,7 @@ fn readFile(ctx: ?*anyopaque, io: std.Io, path: []const u8, allocator: Allocator
     const data = try inner.readFile(ctx, io, punk_path, allocator);
     defer allocator.free(data);
     var raw: Raw = .{ .ctx = ctx, .io = io };
-    const reader: punk.Reader = .{ .ctx = &raw, .read = readRaw, .packageDir = packageDir };
+    const reader: punk.Reader = .{ .ctx = &raw, .read = readRaw, .packageDir = packageDir, .platform = findPlatform };
     // A syntax error is remembered by the translator; `report.zig` turns
     // the build's "could not read" into a report about it.
     return punk.toRocWith(allocator, punk_path, data, reader) catch |err| switch (err) {
@@ -197,11 +197,32 @@ fn packageDir(ctx: ?*anyopaque, allocator: Allocator, url: []const u8) ?[]const 
 pub fn translateRaw(allocator: Allocator, io: std.Io, path: []const u8, source: []const u8) punk.Error!?[]u8 {
     if (!punk.isPunkPath(path)) return null;
     var raw: Raw = .{ .ctx = null, .io = io };
-    const reader: punk.Reader = .{ .ctx = &raw, .read = readRawDisk };
+    const reader: punk.Reader = .{ .ctx = &raw, .read = readRawDisk, .platform = findPlatform };
     return try punk.toRocWith(allocator, path, source, reader);
 }
 
 fn readRawDisk(ctx: ?*anyopaque, allocator: Allocator, path: []const u8) ?[]u8 {
     const raw: *const Raw = @ptrCast(@alignCast(ctx.?));
     return std.Io.Dir.cwd().readFileAlloc(raw.io, path, allocator, .limited(256 * 1024 * 1024)) catch null;
+}
+
+/// The platform named `name` (`platform "cli"`) for the app at `app_path`:
+/// the relative path from the app's folder to `platforms/<name>/main.roc`
+/// next to this compiler. That is `<prefix>/platforms` for an installed
+/// punk (`<prefix>/bin/punk`, see install.sh) and the repository's
+/// `platforms` for `zig-out/bin/punk`. The compiler's own path is resolved
+/// first, so a link such as `~/.local/bin/punk` leads to the real one.
+fn findPlatform(ctx: ?*anyopaque, allocator: Allocator, app_path: []const u8, name: []const u8) ?[]const u8 {
+    const raw: *const Raw = @ptrCast(@alignCast(ctx.?));
+    const exe = std.process.executablePathAlloc(raw.io, allocator) catch return null;
+    const real = std.Io.Dir.realPathFileAbsoluteAlloc(raw.io, exe, allocator) catch exe;
+    const bin = std.fs.path.dirname(real) orelse return null;
+    const cwd = std.process.currentPathAlloc(raw.io, allocator) catch return null;
+    for ([_][]const u8{ "../platforms", "../../platforms" }) |up| {
+        const dir = std.fs.path.resolve(allocator, &.{ bin, up }) catch return null;
+        const main_roc = std.fs.path.join(allocator, &.{ dir, name, "main.roc" }) catch return null;
+        std.Io.Dir.accessAbsolute(raw.io, main_roc, .{}) catch continue;
+        return punk.platformSpec(allocator, cwd, app_path, dir, name) catch null;
+    }
+    return null;
 }

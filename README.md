@@ -10,7 +10,7 @@ The language and its command are called `punk`, and its files end in
 `.punk`. "punk-lang" is the name to search for.
 
 ```elm
-app [main!] { Platform: platform "../platforms/cli/main.roc" }
+app [main!] { Platform: platform "cli" }
 
 import Platform.Stdout
 

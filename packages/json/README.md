@@ -5,7 +5,7 @@ punk itself. Decoders are written by hand: what the JSON looks like is part of
 the program, nothing is derived from a type.
 
 ```
-app [main!] { Platform: platform "../../platforms/cli/main.roc", Json: "../../packages/json/main.roc" }
+app [main!] { Platform: platform "cli", Json: "../../packages/json/main.roc" }
 
 import Json.Decode as D
 import Json.Encode as E

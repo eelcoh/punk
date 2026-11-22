@@ -6,7 +6,7 @@ ambit owns the listener, the threads and the limits (body size, timeouts, a
 full queue answers 503), and calls the punk app once per request.
 
 ```
-app [handle!] { Platform: platform "../../platforms/server/main.roc", Json: "../../packages/json/main.roc" }
+app [handle!] { Platform: platform "server", Json: "../../packages/json/main.roc" }
 
 import Platform.Http exposing [Request, Response]
 import Platform.Kv

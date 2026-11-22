@@ -9,7 +9,7 @@ punk app is the Elm architecture: a model, an `update` for every message, a
 app listens to.
 
 ```
-app [Model, Msg, main] { Platform: platform "../../platforms/tui/main.roc" }
+app [Model, Msg, main] { Platform: platform "tui" }
 
 import Platform.Tui
 import Platform.Cmd

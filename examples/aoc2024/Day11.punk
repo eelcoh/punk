@@ -1,6 +1,6 @@
-app [main!] { pf: platform "../../platforms/cli/main.roc" }
+app [main!] { Platform: platform "../../platforms/cli/main.roc" }
 
-import pf.Stdout
+import Platform.Stdout
 
 {-| Advent of Code 2024, day 11: Plutonian Pebbles.
 The order of the stones does not matter, only how many of each there are.

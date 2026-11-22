@@ -1,6 +1,6 @@
-app [main!] { pf: platform "../platforms/cli/main.roc" }
+app [main!] { Platform: platform "../platforms/cli/main.roc" }
 
-import pf.Stdout
+import Platform.Stdout
 
 {-| Advent of Code 2025, day 2, in a functional punkroc style.
 Same answers as test/fx/aoc_day2.roc, without var, for or while.

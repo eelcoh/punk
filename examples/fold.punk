@@ -1,6 +1,6 @@
-app [main!] { pf: platform "../platforms/cli/main.roc" }
+app [main!] { Platform: platform "../platforms/cli/main.roc" }
 
-import pf.Stdout
+import Platform.Stdout
 
 {-| Folds without loops: the `fold` keyword, inline and as a block.
 See src/punk/README.md, "Folds instead of loops".

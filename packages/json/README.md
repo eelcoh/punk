@@ -5,10 +5,10 @@ punk itself. Decoders are written by hand: what the JSON looks like is part of
 the program, nothing is derived from a type.
 
 ```
-app [main!] { pf: platform "../../platforms/cli/main.roc", json: "../../packages/json/main.roc" }
+app [main!] { Platform: platform "../../platforms/cli/main.roc", Json: "../../packages/json/main.roc" }
 
-import json.Decode as D
-import json.Encode as E
+import Json.Decode as D
+import Json.Encode as E
 
 type alias Link = { url : Str, created : Int }
 
@@ -36,7 +36,7 @@ encodeLink = fn l ->
 Differences from Elm:
 
 - The modules are `Decode` and `Encode` of the package `json`
-  (`import json.Decode as D`), not `Json.Decode`: Roc reserves the name `Json`.
+  (`import Json.Decode as D`), not `Json.Decode`: Roc reserves the name `Json`.
 - No `D.andMap` pipeline: punk functions take all their arguments at once, so
   `D.succeed f |> D.andMap ...` doesn't type. Use `map2` to `map5`, nest them,
   or `andThen` for more fields.

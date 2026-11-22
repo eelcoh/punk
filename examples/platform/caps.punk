@@ -1,9 +1,9 @@
-app [main!] { pf: platform "../../platforms/cli/main.roc" }
+app [main!] { Platform: platform "../../platforms/cli/main.roc" }
 
-import pf.Stdout
-import pf.File
-import pf.Clock
-import pf.Random
+import Platform.Stdout
+import Platform.File
+import Platform.Clock
+import Platform.Random
 
 {-| The capabilities of punkroc's cli platform: the clock, randomness, and
 only the files named on the command line. Run with `out.txt` as argument.

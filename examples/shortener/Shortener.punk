@@ -1,13 +1,13 @@
-app [handle!] { pf: platform "../../platforms/server/main.roc", json: "../../packages/json/main.roc" }
+app [handle!] { Platform: platform "../../platforms/server/main.roc", Json: "../../packages/json/main.roc" }
 
-import pf.Http exposing [Request, Response]
-import pf.Clock
-import pf.Random
-import pf.Kv
-import pf.Config
-import pf.Log
-import json.Decode as D
-import json.Encode as E
+import Platform.Http exposing [Request, Response]
+import Platform.Clock
+import Platform.Random
+import Platform.Kv
+import Platform.Config
+import Platform.Log
+import Json.Decode as D
+import Json.Encode as E
 
 {-| A link shortener: ambit's `apps/shortener`, in punk.
 

@@ -1,9 +1,9 @@
-app [main!] { pf: platform "../../platforms/cli/main.roc", json: "../../packages/json/main.roc" }
+app [main!] { Platform: platform "../../platforms/cli/main.roc", Json: "../../packages/json/main.roc" }
 
-import pf.Stdout
-import json.Value
-import json.Decode as D
-import json.Encode as E
+import Platform.Stdout
+import Json.Value
+import Json.Decode as D
+import Json.Encode as E
 
 {-| JSON with the `json` package: Elm-style decoders and encoders, written by hand. -}
 

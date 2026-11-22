@@ -7,9 +7,9 @@ decoders), compiled by the Roc compiler, on platforms whose hosts are Rust
 agents and meant to be easy for a person to read: if it compiles, it runs.
 
 ```elm
-app [main!] { pf: platform "../platforms/cli/main.roc" }
+app [main!] { Platform: platform "../platforms/cli/main.roc" }
 
-import pf.Stdout
+import Platform.Stdout
 
 double : I64 -> I64
 double = fn x ->

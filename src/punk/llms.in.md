@@ -25,9 +25,9 @@ is often caused by an earlier one.
 ## A program
 
 ```
-app [main!] { pf: platform "../platforms/cli/main.roc" }
+app [main!] { Platform: platform "../platforms/cli/main.roc" }
 
-import pf.Stdout
+import Platform.Stdout
 
 main! = fn () ->
     Stdout.line! "Hello"
@@ -339,7 +339,7 @@ them as the punk spelling (`String.fromInt`, `List.length`).
 
 ## The platform
 
-`platforms/cli` (`app [main!] { pf: platform "platforms/cli/main.roc" }`,
+`platforms/cli` (`app [main!] { Platform: platform "platforms/cli/main.roc" }`,
 relative to your file) provides:
 
 ```
@@ -360,11 +360,11 @@ Random.u64! : () => U64              -- 64 random bits from the OS
 (`punk app.punk input.txt`); any other path gives `Err (FileErr msg)`. Take
 the path from `Arg.list!`, never write a file name into the program.
 
-Import what you use: `import pf.Stdout`, `import pf.File`, ...
+Import what you use: `import Platform.Stdout`, `import Platform.File`, ...
 
 A package name may be capitalized, as modules are: `{ Platform: platform
 "...", Json: "..." }` with `import Platform.Stdout` and `import Json.Decode
-as D`. That is the style for new code; `pf` and `json` keep working.
+as D`. All examples use it; lowercase `pf` and `json` keep working.
 
 ### The server platform
 
@@ -372,9 +372,9 @@ as D`. That is the style for new code; `pf` and `json` keep working.
 is one function, called for every request:
 
 ```
-app [handle!] { pf: platform "platforms/server/main.roc", json: "packages/json/main.roc" }
+app [handle!] { Platform: platform "platforms/server/main.roc", Json: "packages/json/main.roc" }
 
-import pf.Http exposing [Request, Response]
+import Platform.Http exposing [Request, Response]
 
 handle! : Request => Response
 handle! = fn req ->
@@ -411,7 +411,7 @@ types. `punk check --schema app.punk` writes `schema.sql` next to the app:
 the versions of the tables, which the wiring applies in order.
 
 ```
-import pf.Db
+import Platform.Db
 
 type alias Link =
     { id : Str
@@ -544,9 +544,9 @@ plus its parameters (`$1`, `$2`, ...); a row decoder reads the rows, as
 without `${...}` (rule P301): values always go in as parameters.
 
 ```
-import pf.Postgres
-import pf.Sql
-import pf.Row
+import Platform.Postgres
+import Platform.Sql
+import Platform.Row
 
 linkRow : Row.Decoder Link
 linkRow =
@@ -644,8 +644,8 @@ of the package `packages/json` (add `json: "packages/json/main.roc"` to the
 app header, relative to your file):
 
 ```
-import json.Decode as D
-import json.Encode as E
+import Json.Decode as D
+import Json.Encode as E
 
 type alias Link = { url : Str, created : Int }
 

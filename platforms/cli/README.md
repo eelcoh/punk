@@ -15,11 +15,11 @@ solutions. Its host is written in Rust, on [ambit](https://github.com/eelcoh/amb
 | `Random` | `u64! : () => U64` (64 random bits from the OS) |
 
 ```
-app [main!] { pf: platform "../platforms/cli/main.roc" }
+app [main!] { Platform: platform "../platforms/cli/main.roc" }
 
-import pf.Stdout
-import pf.File
-import pf.Arg
+import Platform.Stdout
+import Platform.File
+import Platform.Arg
 
 main! = fn () ->
     case Arg.list! () of

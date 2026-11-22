@@ -1,9 +1,9 @@
-app [handle!] { pf: platform "../../platforms/server/main.roc" }
+app [handle!] { Platform: platform "../../platforms/server/main.roc" }
 
-import pf.Http exposing [Request, Response]
-import pf.Db
-import pf.Random
-import pf.Log
+import Platform.Http exposing [Request, Response]
+import Platform.Db
+import Platform.Random
+import Platform.Log
 
 {-| Notes, each of one user, in Postgres. Who may see and change a note is
 the table's policy, and the database itself keeps to it: punk turns each

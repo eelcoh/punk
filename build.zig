@@ -15,8 +15,10 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .punk = b.path("src"),
+        // Roc's coverage steps pull in kcov on linux-aarch64; punk needs none.
+        .coverage = false,
     });
-    const install = b.addInstallArtifact(roc.artifact("roc"), .{ .dest_sub_path = "punk" });
+    const install = b.addInstallBinFile(rocBinary(roc), "punk");
     b.getInstallStep().dependOn(&install.step);
 
     // Roc's builtins, which src/punk/gen_llms.py and gen_stdlib.py read.
@@ -30,4 +32,21 @@ pub fn build(b: *std.Build) void {
     }) });
     const test_step = b.step("test", "Run the translator's unit tests");
     test_step.dependOn(&b.addRunArtifact(tests).step);
+}
+
+/// The `roc` binary that Roc's build installs. On macOS Roc installs a copy
+/// with its exports stripped (an install of a file, not of the artifact), so
+/// `roc.artifact("roc")` would not find it there.
+fn rocBinary(roc: *std.Build.Dependency) std.Build.LazyPath {
+    for (roc.builder.install_tls.step.dependencies.items) |step| {
+        if (step.cast(std.Build.Step.InstallArtifact)) |inst| {
+            if (std.mem.eql(u8, inst.artifact.name, "roc")) return inst.artifact.getEmittedBin();
+        }
+        if (step.cast(std.Build.Step.InstallFile)) |inst| {
+            if (inst.dir == .bin and std.mem.eql(u8, inst.dest_rel_path, "roc")) return inst.source;
+        }
+    }
+    // Not configured yet (Zig first fetches lazy dependencies) or gone:
+    // this reports which artifacts there are.
+    return roc.artifact("roc").getEmittedBin();
 }

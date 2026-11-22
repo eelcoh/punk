@@ -22,9 +22,11 @@ out=$("$punk" hello/Hello.punk)
 
 "$punk" new server my-notes
 "$punk" check my-notes/MyNotes.punk
-grep -q 'punk-server = { git = "https://github.com/eelcoh/punk", tag = "' my-notes/server/Cargo.toml
-test -f my-notes/.claude/skills/punk-check-loop/SKILL.md
-test -f my-notes/AGENTS.md
+grep -qF 'punk-server = { git = "https://github.com/eelcoh/punk", tag = "' my-notes/server/Cargo.toml ||
+    { echo "try.sh: the server crate doesn't use the release's tag:"; grep punk-server my-notes/server/Cargo.toml; exit 1; }
+for f in AGENTS.md .claude/skills/punk-check-loop/SKILL.md; do
+    test -f "my-notes/$f" || { echo "try.sh: punk new made no $f:"; find my-notes -not -path '*/.git/*'; exit 1; }
+done
 
 "$punk" new tui counter
 "$punk" check counter/Counter.punk

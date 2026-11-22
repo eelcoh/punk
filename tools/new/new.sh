@@ -113,8 +113,9 @@ if [ "$platform" != cli ]; then
     fi
 fi
 mkdir -p "$folder/.claude/skills"
+# Without the trailing /: BSD cp (macOS) copies a dir/ as its contents.
 for skill in "$share"/skills/*/; do
-    cp -R "$skill" "$folder/.claude/skills/"
+    cp -R "${skill%/}" "$folder/.claude/skills/"
 done
 fill "$here/$platform/README.md" "$folder/README.md"
 cat > "$folder/.gitignore" <<'EOF'

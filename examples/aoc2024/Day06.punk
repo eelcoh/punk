@@ -1,4 +1,4 @@
-app [main!] { Platform: platform "../../platforms/cli/main.roc" }
+app [main!] { Platform: platform "cli" }
 
 import Platform.Stdout
 import Grid exposing (Grid, Point)

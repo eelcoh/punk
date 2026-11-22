@@ -15,7 +15,7 @@ solutions. Its host is written in Rust, on [ambit](https://github.com/eelcoh/amb
 | `Random` | `u64! : () => U64` (64 random bits from the OS) |
 
 ```
-app [main!] { Platform: platform "../platforms/cli/main.roc" }
+app [main!] { Platform: platform "cli" }
 
 import Platform.Stdout
 import Platform.File

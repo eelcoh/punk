@@ -1,4 +1,4 @@
-app [handle!] { Platform: platform "../../platforms/server/main.roc" }
+app [handle!] { Platform: platform "server" }
 
 import Platform.Http exposing [Request, Response]
 import Platform.Db
@@ -19,6 +19,10 @@ as the user of the request (`Db.runAs!`).
 - `PUT /me` with a name as body: the name of the user, 201 the first time.
 - `GET /public`: the public notes of the users with a name, by name and then
   by text, one per line: `name: body`.
+- `GET /public/all`: every public note by text, also of users without a name
+  (then `?`), one per line: `name: body`.
+- `GET /writers`: per user with public notes, how many and the first by text,
+  one per line: `owner count first`.
 
 The user comes from the header `x-user`, which a proxy in front of the app
 sets once it has signed the user in. Without it the user is nobody, who only
@@ -106,6 +110,33 @@ publicNotes =
         |> Db.map (fn note, person -> { name = person.name, body = note.body })
         |> Db.all
 
+-- Every public note with the name of its writer when there is one: a left
+-- join gives the person as a Maybe.
+allPublicNotes : Db.Query (List { name : Maybe Str, body : Str })
+allPublicNotes =
+    notes
+        |> Db.leftJoin people (fn note, person -> note.owner == person.id)
+        |> Db.filter (fn note, _ -> note.public)
+        |> Db.sortBy (fn note, _ -> note.body)
+        |> Db.map
+            (fn note, person ->
+                { name = Maybe.map .name person, body = note.body }
+            )
+        |> Db.all
+
+-- The writers of public notes, each with how many and the first by text.
+writers : Db.Query (List { owner : Str, count : Int, first : Str })
+writers =
+    notes
+        |> Db.filter .public
+        |> Db.groupBy .owner
+        |> Db.sortBy (fn owner, _ -> owner)
+        |> Db.map
+            (fn owner, rows ->
+                { owner, count = Db.count rows, first = Db.min .body rows }
+            )
+        |> Db.all
+
 remove : Str -> Db.Query Int
 remove = fn id ->
     notes
@@ -143,6 +174,8 @@ route! = fn user, req ->
             changed (try Db.runAs! user (remove id))
         ("PUT", ["", "me"]) -> setName! user req.body
         ("GET", ["", "public"]) -> listPublic! user
+        ("GET", ["", "public", "all"]) -> listAllPublic! user
+        ("GET", ["", "writers"]) -> listWriters! user
         _ -> Ok (text 404 "not found\n")
 
 add! : User -> List U8 => Result Response _
@@ -233,3 +266,21 @@ text = fn status, body ->
     , headers = [("content-type", "text/plain; charset=utf-8")]
     , body = Str.toUtf8 body
     }
+
+listAllPublic! : User => Result Response _
+listAllPublic! = fn user ->
+    found = try Db.runAs! user allPublicNotes
+    lines =
+        found
+            |> List.map (fn note -> "${Maybe.withDefault "?" note.name}: ${note.body}\n")
+            |> Str.joinWith ""
+    Ok (text 200 lines)
+
+listWriters! : User => Result Response _
+listWriters! = fn user ->
+    found = try Db.runAs! user writers
+    lines =
+        found
+            |> List.map (fn w -> "${w.owner} ${String.fromInt w.count} ${w.first}\n")
+            |> Str.joinWith ""
+    Ok (text 200 lines)

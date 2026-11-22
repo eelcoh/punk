@@ -80,7 +80,7 @@ done < "$work/cases"
 # run here: it is an archive that its Rust crate links and tests (cargo test
 # in its server/ or tui/ folder, on ambit's spec or sim). Here it only has to
 # type-check.
-server_apps=$(cd examples && grep -lE '^app.*platforms/(server|tui)/main.roc' $(find . -name '*.punk') | sed 's|^\./||' | sort)
+server_apps=$(cd examples && grep -lE '^app.*platform "(server|tui)"' $(find . -name '*.punk') | sed 's|^\./||' | sort)
 for f in $server_apps; do
     if "$roc" check "examples/$f" > "$work/check" 2>&1; then
         echo "ok   check $f"

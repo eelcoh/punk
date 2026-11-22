@@ -6,7 +6,7 @@ ambit owns the listener, the threads and the limits (body size, timeouts, a
 full queue answers 503), and calls the punk app once per request.
 
 ```
-app [handle!] { Platform: platform "../../platforms/server/main.roc", Json: "../../packages/json/main.roc" }
+app [handle!] { Platform: platform "server", Json: "../../packages/json/main.roc" }
 
 import Platform.Http exposing [Request, Response]
 import Platform.Kv
@@ -72,8 +72,9 @@ findLink = fn id ->
 -- SELECT id, url, created FROM links WHERE id = $1 LIMIT 1
 ```
 
-- **Steps.** In this order: `Db.join users (fn l, u -> l.owner == u.id)`,
-  `Db.filter` (several are joined with AND), `Db.sortBy` and
+- **Steps.** In this order: `Db.join users (fn l, u -> l.owner == u.id)`
+  or `Db.leftJoin`, `Db.filter` (several are joined with AND), `Db.groupBy`,
+  `Db.sortBy` and
   `Db.sortByDescending` (the last one decides first, as with `List.sortBy`),
   `Db.drop n` (`OFFSET`), `Db.take n` (`LIMIT`) and at most one `Db.map`
   (`.url`, or a record `{ url = l.url, later = l.created + 10 }`), then one
@@ -85,6 +86,14 @@ findLink = fn id ->
   CONFLICT DO NOTHING`) add a row. `Db.run!` runs a `Db.Query a`; the
   changing ones give the number of rows changed. `Db.runAs! user query`
   runs it as the user, for the tables whose policies look at the user.
+- **Left joins and groups.** After `Db.leftJoin people (fn n, p -> ...)`
+  the person is a `Maybe` (`LEFT JOIN`): take a column with
+  `Maybe.map .name p`, or test `p == Nothing` (`IS NULL`). After
+  `Db.groupBy .owner` the functions take the key and the rows of a group
+  (`GROUP BY`), and the `map` names what each group gives:
+  `Db.map (fn owner, rows -> { owner, n = Db.count rows, total = Db.sum .amount rows })`,
+  with `Db.count`, `Db.sum`, `Db.min`, `Db.max` and `Db.avg`. Grouping works
+  on one table for now.
 - **Checked by the compiler, without a database.** A column the table
   doesn't have, a literal of the wrong type and a comparison of a `Str` with
   an `Int` are errors with a code (P403); a function the database can't run
@@ -152,8 +161,8 @@ findLink = fn id ->
   it is `Database::begin`, which gives a `Transaction` (`run`, `commit`;
   dropping it rolls back). `examples/notes` pins one note per user this
   way.
-- **SQL by hand stays.** For what the language can't do yet (left joins,
-  aggregates, grouping), `Sql.query` and `Row` below are the escape hatch.
+- **SQL by hand stays.** For what the language can't do yet (grouping a
+  join, `HAVING`, subqueries), `Sql.query` and `Row` below are the escape hatch.
 
 ## Postgres: SQL by hand
 
@@ -410,7 +419,7 @@ shortener checks it too).
 
 ## Not there yet
 
-- The query language: left joins, aggregates and grouping, tables shared
+- The query language: grouping a join, filtering groups (`HAVING`), tables shared
   between modules, removing or renaming a whole table in a migration, own types as columns (`type LinkId =
   LinkId Str`), and checking `Sql.query`'s SQL against the tables.
 - TLS to the database (`NoTls` now: for a database on the same machine or a

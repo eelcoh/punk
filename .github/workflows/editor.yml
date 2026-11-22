@@ -1,0 +1,32 @@
+# The VS Code extension (editors/vscode): its TextMate grammar, tested with
+# VS Code's own tokenizer on a set of cases and on every .punk file in
+# examples/ and packages/.
+
+name: editor
+
+on:
+  push:
+    branches: [main]
+    paths: ['editors/**', 'examples/**', 'packages/**', '.github/workflows/editor.yml']
+  pull_request:
+    branches: [main]
+    paths: ['editors/**', 'examples/**', 'packages/**', '.github/workflows/editor.yml']
+
+permissions: {}
+
+jobs:
+  grammar:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6.0.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm test

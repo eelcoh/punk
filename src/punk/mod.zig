@@ -5,6 +5,7 @@
 const std = @import("std");
 const translate_mod = @import("translate.zig");
 const interface = @import("interface.zig");
+const platforms = @import("platforms.zig");
 
 pub const Interface = interface.Interface;
 
@@ -16,8 +17,16 @@ pub const translate = translate_mod.translate;
 pub const schema = translate_mod.schema;
 pub const SchemaResult = translate_mod.SchemaResult;
 
+/// A type as Roc's compiler shows it, written as in punk (`Try(I64, Str)` is
+/// `Result Int Str`), for error messages.
+pub const punkType = @import("type_text.zig").punkType;
+
 /// `punk fmt`: lays out punkroc source in its one canonical form.
 pub const format = @import("format.zig");
+
+/// The relative path from the folder of an app to `platforms_dir/name/main.roc`
+/// (`platform "cli"`, src/punk/platforms.zig).
+pub const platformSpec = platforms.relativeSpec;
 
 /// The file extension of punkroc source files.
 pub const extension = ".punk";
@@ -36,6 +45,11 @@ pub const Reader = struct {
     /// first when it is not there yet. Null (the function, or its answer)
     /// leaves the package's modules unread.
     packageDir: ?*const fn (ctx: ?*anyopaque, allocator: std.mem.Allocator, url: []const u8) ?[]const u8 = null,
+    /// The spec for the platform named `name` (`platform "cli"`) of the app
+    /// at `app_path`: the relative path to the `main.roc` of the platform of
+    /// that name that came with the compiler, null when there is none. Null
+    /// (the function) leaves names as they are (src/punk/platforms.zig).
+    platform: ?*const fn (ctx: ?*anyopaque, allocator: std.mem.Allocator, app_path: []const u8, name: []const u8) ?[]const u8 = null,
 };
 
 /// Finds the directory of URL packages for `Reader.packageDir`.
@@ -95,7 +109,7 @@ pub fn syntaxError(allocator: std.mem.Allocator, path: []const u8) std.mem.Alloc
 /// Like `toRoc`, but reads the modules `path` imports with `reader`, so
 /// their functions can be partially applied and called in the right order
 /// (see `translate.Resolver`).
-pub fn toRocWith(allocator: std.mem.Allocator, path: []const u8, src: []const u8, reader: ?Reader) Error![]u8 {
+pub fn toRocWith(allocator: std.mem.Allocator, path: []const u8, src_in: []const u8, reader: ?Reader) Error![]u8 {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     var diag: Diagnostic = .{};
@@ -104,6 +118,20 @@ pub fn toRocWith(allocator: std.mem.Allocator, path: []const u8, src: []const u8
     if (reader) |r| {
         load_ctx = .{ .reader = r, .dir = std.fs.path.dirname(path) orelse "." };
         resolver = .{ .ctx = &load_ctx, .load = load, .schema = loadSchema };
+    }
+    // `platform "cli"`: the platform of that name that came with punk.
+    var src = src_in;
+    if (reader) |r| {
+        if (r.platform) |find| {
+            const found = try platforms.resolve(arena.allocator(), src, path, .{ .ctx = r.ctx, .find = find });
+            if (found.unknown) |u| {
+                const msg = try std.fmt.allocPrint(arena.allocator(), "{s}:{d}:{d}: there is no platform named \"{s}\" next to this punk (it has cli, server and tui); give a name of one of those, or a path to a platform's main.roc", .{ path, u.line, u.col, u.name });
+                syntax_errors.set(path, msg);
+                source_maps.set(path, src, "", &.{});
+                return error.ParseError;
+            }
+            src = found.src;
+        }
     }
     const mapped = translate_mod.translateMapped(arena.allocator(), src, &diag, resolver) catch |err| switch (err) {
         error.ParseError => {

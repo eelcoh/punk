@@ -10,7 +10,7 @@ The language and its command are called `punk`, and its files end in
 `.punk`. "punk-lang" is the name to search for.
 
 ```elm
-app [main!] { Platform: platform "../platforms/cli/main.roc" }
+app [main!] { Platform: platform "cli" }
 
 import Platform.Stdout
 
@@ -25,6 +25,23 @@ main! = fn () ->
         |> Str.joinWith ", "
         |> Stdout.line!
 ```
+
+## Install
+
+On macOS or Linux, without Zig or Rust:
+
+```
+curl -fsSL https://raw.githubusercontent.com/eelcoh/punk/main/install.sh | sh
+```
+
+Once the first release is tagged, this installs the latest release in `~/.punk` (the compiler, the platforms,
+the packages and `llms.txt`), links `punk` into `~/.local/bin`, and checks
+the download against the release's `SHA256SUMS` first. `PUNK_VERSION`,
+`PUNK_HOME` and `PUNK_BIN_DIR` change what and where (see `install.sh`).
+Releases are made by `.github/workflows/release.yml` on a `v*` tag.
+
+For VS Code there is an extension in `editors/vscode/`: highlighting,
+`punk fmt` on save, and the problems of `punk check --json`.
 
 ## Build and run
 
@@ -49,6 +66,8 @@ zig-out/bin/punk fmt examples/elm.punk
 | `packages/json` | Elm-style `Json.Decode` / `Json.Encode` |
 | `examples/` | example apps, and the golden tests' programs |
 | `skills/`, `templates/` | agent skills per task (`SKILL.md`), and an `AGENTS.md` per platform for new apps |
+| `editors/vscode/` | the VS Code extension ([README](editors/vscode/README.md)) |
+| `install.sh`, `tools/release/` | installing a release, and packing one |
 | `test/` | golden tests, setup of the hosts, everything CI runs (`test/ci.sh`) |
 
 ## Roc

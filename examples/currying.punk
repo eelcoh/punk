@@ -47,5 +47,8 @@ main! = fn () ->
         |> List.map (greeting "Hello")
         |> List.forEach! Stdout.line!
 
-    parsed = ["1", "2", "x"] |> List.map I64.fromStr |> List.map (Result.withDefault 0)
+    parsed =
+        ["1", "2", "x"]
+            |> List.map I64.fromStr
+            |> List.map (Result.withDefault 0)
     Stdout.line! "parsed: ${Str.inspect parsed}"

@@ -135,9 +135,12 @@ route! = fn user, req ->
     case (req.method, Str.splitOn "/" req.path) of
         ("POST", ["", "notes"]) -> add! user req.body
         ("GET", ["", "notes"]) -> list! user
-        ("POST", ["", "notes", id, "publish"]) -> changed (try Db.runAs! user (publish id))
-        ("POST", ["", "notes", id, "pin"]) -> Db.transactionAs! user (fn _ -> pinOnly! user id)
-        ("DELETE", ["", "notes", id]) -> changed (try Db.runAs! user (remove id))
+        ("POST", ["", "notes", id, "publish"]) ->
+            changed (try Db.runAs! user (publish id))
+        ("POST", ["", "notes", id, "pin"]) ->
+            Db.transactionAs! user (fn _ -> pinOnly! user id)
+        ("DELETE", ["", "notes", id]) ->
+            changed (try Db.runAs! user (remove id))
         ("PUT", ["", "me"]) -> setName! user req.body
         ("GET", ["", "public"]) -> listPublic! user
         _ -> Ok (text 404 "not found\n")
@@ -148,7 +151,13 @@ add! = fn user, body ->
         Err _ -> Ok (text 400 "a note is text\n")
         Ok noteText ->
             id = "n${U64.toStr (Random.u64! ())}"
-            note = { id, owner = user.id, body = noteText, public = False, pinned = False }
+            note =
+                { id
+                , owner = user.id
+                , body = noteText
+                , public = False
+                , pinned = False
+                }
             _ = try Db.runAs! user (Db.insert note notes)
             Ok (text 201 "${id}\n")
 
@@ -184,7 +193,10 @@ saveName! : User -> Str => Result Response _
 saveName! = fn user, newName ->
     count = try Db.runAs! user (rename user.id newName)
     if count == 0 then
-        _ = try Db.runAs! user (Db.insert { id = user.id, name = newName } people)
+        _ =
+            try Db.runAs!
+                user
+                (Db.insert { id = user.id, name = newName } people)
         Ok (text 201 "ok\n")
     else
         Ok (text 200 "ok\n")

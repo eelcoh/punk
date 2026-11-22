@@ -32,7 +32,8 @@ parseEquation = fn line ->
         [target, numbers] ->
             Ok
                 { target = try U64.fromStr target
-                , numbers = numbers |> Str.splitOn " " |> try List.mapTry U64.fromStr
+                , numbers =
+                    numbers |> Str.splitOn " " |> try List.mapTry U64.fromStr
                 }
         _ -> Err (BadLine line)
 
@@ -57,7 +58,8 @@ reaches = fn ops, target, acc, numbers ->
     else
         case numbers of
             [] -> acc == target
-            [n, ..rest] -> List.any (fn op -> reaches ops target (apply op acc n) rest) ops
+            [n, ..rest] ->
+                List.any (fn op -> reaches ops target (apply op acc n) rest) ops
 
 apply : Op -> U64 -> U64 -> U64
 apply = fn op, a, b ->

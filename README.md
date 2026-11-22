@@ -1,10 +1,13 @@
-# punk
+# punk-lang
 
-punk is a small language for real applications: Elm's syntax and habits
+punk-lang is a small language for real applications: Elm's syntax and habits
 (whitespace, `f a b`, `|>`, `case ... of`, `Maybe`, hand-written JSON
 decoders), compiled by the Roc compiler, on platforms whose hosts are Rust
 (on [ambit](https://github.com/eelcoh/ambit)). It is written mostly by
 agents and meant to be easy for a person to read: if it compiles, it runs.
+
+The language and its command are called `punk`, and its files end in
+`.punk`. "punk-lang" is the name to search for.
 
 ```elm
 app [main!] { Platform: platform "../platforms/cli/main.roc" }

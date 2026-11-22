@@ -1,6 +1,6 @@
-# punkroc
+# The punk translator
 
-punkroc is an experiment: Roc with an Elm-like, whitespace-based syntax.
+punk-lang (`punk`, earlier "punkroc") is Roc with an Elm-like, whitespace-based syntax.
 This directory holds the translator from `.punk` to ordinary Roc source.
 
 ```

@@ -1,6 +1,6 @@
-# punkroc (punk)
+# punk-lang (punk)
 
-> punkroc ("punk") is an Elm-like language on top of the Roc compiler: Elm's
+> punk-lang ("punk") is an Elm-like language on top of the Roc compiler: Elm's
 > syntax, names and argument order, Roc's types, platforms and speed. Files end
 > in `.punk`. This file is everything you need to write punk programs.
 
@@ -34,7 +34,7 @@ main! = fn () ->
 ```
 
 The path after `platform` is relative to the `.punk` file; it points to
-`platforms/cli/main.roc` in the punkroc repository. A file is an `app`
+`platforms/cli/main.roc` in the punk-lang repository. A file is an `app`
 (it has `main!`) or a `module` (see "Modules").
 
 ## Syntax

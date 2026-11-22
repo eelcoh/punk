@@ -121,7 +121,13 @@ without options, like elm-format: 4 spaces per indentation level, one space
 between tokens (none inside `( )` and `[ ]`, one inside `{ }`, spaces around
 operators), Elm's leading commas when a list is written that way, one blank
 line between top-level definitions and none between an annotation and its
-definition. Line breaks stay where the author put them. `--check` lists the
+definition. Line breaks stay where the author put them, except that a line
+longer than 80 characters is split as elm-format would write it: the body of
+a definition or `case` branch on the next line, one line per `|>` (and per
+`&&`, `||`, `++`), an `if` with its branches on lines of their own, a list,
+record or tuple with leading commas, one argument per line for a call, and
+the body of a lambda in parentheses on a line of its own. A line that is long
+only because of a long string stays as it is. `--check` lists the
 files that are not formatted and fails. The formatter works on tokens, keeps
 every comment, and checks its own work: when the Roc translation of the
 result differs from that of the original (ignoring whitespace), it leaves the

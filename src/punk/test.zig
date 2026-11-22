@@ -1370,6 +1370,65 @@ test "fmt: types, tuples, leading commas, multi-line strings" {
     );
 }
 
+test "fmt: long lines are split, elm-format style" {
+    try checkFormat(
+        \\main! = fn () ->
+        \\    names = users |> List.filter (fn u -> u.age > 18) |> List.map (fn u -> u.name) |> List.sortBy identity
+        \\    point = { x = someLongFunctionName 1 2 3, y = anotherLongFunctionName 4 5 6, z = 0 }
+        \\    label = if List.isEmpty names then "nobody" else String.join ", " (List.map String.toUpper names)
+        \\    Stdout.line! (show (Decode.decodeString (Decode.field "counts" Decode.int) input) (fn n -> n))
+        \\    pair = (someLongFunctionName 1 2 3, anotherLongFunctionName 4 5 6, yetAnother 7 8)
+        \\    message = "a long string that does not fit on the line however it is laid out, so it stays"
+        \\
+        \\update : Msg -> Model -> Model
+        \\update = fn msg, model ->
+        \\    case msg of
+        \\        Rename name -> { model | name = name, renamed = True, history = List.append model.history model.name }
+        \\        Noop -> model
+        \\
+    ,
+        \\main! = fn () ->
+        \\    names =
+        \\        users
+        \\            |> List.filter (fn u -> u.age > 18)
+        \\            |> List.map (fn u -> u.name)
+        \\            |> List.sortBy identity
+        \\    point =
+        \\        { x = someLongFunctionName 1 2 3
+        \\        , y = anotherLongFunctionName 4 5 6
+        \\        , z = 0
+        \\        }
+        \\    label =
+        \\        if List.isEmpty names then
+        \\            "nobody"
+        \\        else
+        \\            String.join ", " (List.map String.toUpper names)
+        \\    Stdout.line!
+        \\        (show
+        \\            (Decode.decodeString (Decode.field "counts" Decode.int) input)
+        \\            (fn n -> n)
+        \\        )
+        \\    pair =
+        \\        ( someLongFunctionName 1 2 3
+        \\        , anotherLongFunctionName 4 5 6
+        \\        , yetAnother 7 8
+        \\        )
+        \\    message = "a long string that does not fit on the line however it is laid out, so it stays"
+        \\
+        \\update : Msg -> Model -> Model
+        \\update = fn msg, model ->
+        \\    case msg of
+        \\        Rename name ->
+        \\            { model
+        \\                | name = name
+        \\                , renamed = True
+        \\                , history = List.append model.history model.name
+        \\            }
+        \\        Noop -> model
+        \\
+    );
+}
+
 test "fmt: a syntax error leaves the file alone" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

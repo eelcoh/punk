@@ -205,7 +205,8 @@ field = fn name, (Decoder run) ->
             case v of
                 JObject fields ->
                     case lookup name fields of
-                        Just item -> Result.mapError (fn e -> Field name e) (run item)
+                        Just item ->
+                            Result.mapError (fn e -> Field name e) (run item)
                         Nothing -> Err (Failure "Expecting an OBJECT with a field named `${name}`" v)
                 _ -> Err (Failure "Expecting an OBJECT with a field named `${name}`" v)
         )

@@ -15,7 +15,14 @@
 //!   imports;
 //! - no trailing spaces, and one newline at the end of the file.
 //!
-//! Line breaks are the author's: the formatter does not join or split lines.
+//! Line breaks are the author's, except that a line longer than
+//! `max_width` is split, the way elm-format writes such code (see
+//! `breakLongLines`): the body of a definition or `case` branch goes on the
+//! next line, a pipeline gets one line per `|>`, an `if` gets its branches
+//! on lines of their own, a list, record or tuple is written with leading
+//! commas, a call gets one argument per line, and a lambda in parentheses
+//! gets its body on a line of its own. A line that is still long (a long
+//! string) stays. The formatter does not join lines.
 //! Header lines (`app`, `module`, `import`) are kept as written.
 //!
 //! To be sure the layout changed nothing else, the formatted text is
@@ -41,7 +48,8 @@ pub const indent_width = 4;
 pub fn format(a: Allocator, src: []const u8, diag: *Diagnostic) Error![]const u8 {
     const before = try translate.translate(a, src, diag);
     const toks = try translate.lex(a, src, diag);
-    const out = try render(a, src, toks);
+    const laid_out = try render(a, src, toks);
+    const out = try breakLongLines(a, laid_out, before);
     var d2: Diagnostic = .{};
     const after = translate.translate(a, out, &d2) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
@@ -373,4 +381,421 @@ fn wantSpace(prev: Token, cur: Token, had: bool, prev_unary: bool, toks: []const
 pub fn render(a: Allocator, src: []const u8, toks: []const Token) Error![]const u8 {
     var r = Renderer{ .a = a, .src = src, .toks = toks };
     return r.run();
+}
+
+// Long lines ----------------------------------------------------------------
+
+/// The longest line `punk fmt` leaves alone, in characters.
+pub const max_width = 80;
+
+/// Splits the lines of `text` (already laid out by `render`) that are longer
+/// than `max_width`, one step at a time, until none can be split further.
+/// Each step is kept only when the file still means the same (its Roc
+/// translation is `roc`), so a split the layout rules don't allow is simply
+/// not made.
+fn breakLongLines(a: Allocator, text: []const u8, roc: []const u8) Error![]const u8 {
+    var cur = text;
+    var from_line: u32 = 1;
+    var steps: usize = 0;
+    outer: while (steps < 10_000) : (steps += 1) {
+        var diag: Diagnostic = .{};
+        const toks = translate.lex(a, cur, &diag) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.ParseError => return cur,
+        };
+        var i: usize = 0;
+        while (i < toks.len and toks[i].tag != .eof) {
+            // The tokens of one line.
+            const line = toks[i].line;
+            var j = i;
+            while (j < toks.len and toks[j].tag != .eof and toks[j].line == line) j += 1;
+            defer i = j;
+            if (line < from_line) continue;
+            const start = lineStart(cur, toks[i].start);
+            const end = lineEnd(cur, toks[i].start);
+            if (width(cur[start..end]) <= max_width) continue;
+            // Long only because of its strings: splitting would not help.
+            if (width(cur[start..end]) - stringWidth(cur, toks[i..j]) <= max_width) continue;
+            // A token that goes on past this line (a multi-line string).
+            if (toks[j - 1].end > end) continue;
+            if (toks[i].tag == .kw_header) continue;
+            const replacement = (try splitLine(a, cur, toks[i..j], end)) orelse continue;
+            const candidate = try std.mem.concat(a, u8, &.{ cur[0..start], replacement, cur[end..] });
+            const relaid = relayout(a, candidate) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => continue,
+            };
+            var d2: Diagnostic = .{};
+            const after = translate.translate(a, relaid, &d2) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                error.ParseError => continue,
+            };
+            if (!sameIgnoringSpace(roc, after)) continue;
+            cur = relaid;
+            from_line = line;
+            continue :outer;
+        }
+        return cur;
+    }
+    return cur;
+}
+
+fn relayout(a: Allocator, text: []const u8) Error![]const u8 {
+    var diag: Diagnostic = .{};
+    const toks = try translate.lex(a, text, &diag);
+    return render(a, text, toks);
+}
+
+fn lineStart(text: []const u8, at: usize) usize {
+    return if (std.mem.findScalarLast(u8, text[0..at], '\n')) |nl| nl + 1 else 0;
+}
+
+fn lineEnd(text: []const u8, at: usize) usize {
+    return std.mem.findScalarPos(u8, text, at, '\n') orelse text.len;
+}
+
+/// How much wider than `""` the long string literals among `toks` are (a
+/// short one is like any other token).
+fn stringWidth(text: []const u8, toks: []const Token) usize {
+    var n: usize = 0;
+    for (toks) |t| if (t.tag == .string) {
+        const w = width(text[t.start..t.end]);
+        if (w > 20) n += w - 2;
+    };
+    return n;
+}
+
+fn width(line: []const u8) usize {
+    return std.unicode.utf8CountCodepoints(line) catch line.len;
+}
+
+fn isOpen(tag: Tag) bool {
+    return tag == .lparen or tag == .lbrack or tag == .lbrace;
+}
+
+fn isClose(tag: Tag) bool {
+    return tag == .rparen or tag == .rbrack or tag == .rbrace;
+}
+
+/// The index of the token that closes the bracket at `open`, or null when it
+/// is not among `toks`.
+fn closing(toks: []const Token, open: usize) ?usize {
+    var depth: usize = 0;
+    for (toks[open..], open..) |t, k| {
+        if (isOpen(t.tag)) depth += 1;
+        if (isClose(t.tag)) {
+            depth -= 1;
+            if (depth == 0) return k;
+        }
+    }
+    return null;
+}
+
+/// The tokens of `toks[from..]` at bracket depth 0 (relative to `from`)
+/// that satisfy `pred`. Null when a bracket closes that opened before `from`.
+fn depthZero(a: Allocator, toks: []const Token, from: usize, pred: *const fn (Token) bool) Error!?[]usize {
+    var out: std.ArrayList(usize) = .empty;
+    var depth: usize = 0;
+    for (toks[from..], from..) |t, k| {
+        if (isClose(t.tag)) {
+            if (depth == 0) return null;
+            depth -= 1;
+            continue;
+        }
+        if (depth == 0 and pred(t)) try out.append(a, k);
+        if (isOpen(t.tag)) depth += 1;
+    }
+    return out.items;
+}
+
+fn isPipe(t: Token) bool {
+    return t.tag == .op and (std.mem.eql(u8, t.text, "|>") or std.mem.eql(u8, t.text, "&&") or
+        std.mem.eql(u8, t.text, "||") or std.mem.eql(u8, t.text, "++"));
+}
+
+fn isColon(t: Token) bool {
+    return t.tag == .colon;
+}
+
+fn isEquals(t: Token) bool {
+    return t.tag == .equals;
+}
+
+fn isArrow(t: Token) bool {
+    return t.tag == .arrow;
+}
+
+fn isComma(t: Token) bool {
+    return t.tag == .comma;
+}
+
+fn isBar(t: Token) bool {
+    return t.tag == .bar;
+}
+
+fn isOpenTok(t: Token) bool {
+    return isOpen(t.tag);
+}
+
+/// Builds the lines that replace one line.
+const Lines = struct {
+    a: Allocator,
+    text: []const u8,
+    out: std.ArrayList(u8) = .empty,
+
+    /// Starts a new line at column `col` (from 1).
+    fn line(l: *Lines, col: u32) Error!void {
+        if (l.out.items.len > 0) try l.out.append(l.a, '\n');
+        try l.out.appendNTimes(l.a, ' ', col - 1);
+    }
+
+    /// Writes the source of the tokens `toks[from..to]` (inclusive), as one
+    /// piece of text with whatever comments are between them.
+    fn span(l: *Lines, toks: []const Token, from: usize, to: usize) Error!void {
+        try l.out.appendSlice(l.a, l.text[toks[from].start..toks[to].end]);
+    }
+
+    fn s(l: *Lines, text: []const u8) Error!void {
+        try l.out.appendSlice(l.a, text);
+    }
+};
+
+/// The lines that replace the line of `toks` (which ends at `end` in
+/// `text`), or null when no way of splitting it applies.
+fn splitLine(a: Allocator, text: []const u8, toks: []const Token, end: usize) Error!?[]const u8 {
+    var l = Lines{ .a = a, .text = text };
+    const col0 = toks[0].col;
+    const deeper = col0 + indent_width;
+    const last = toks.len - 1;
+    // What follows the last token: a comment at the end of the line.
+    const trailing = std.mem.trimEnd(u8, text[toks[last].end..end], " \r");
+
+    // A line that starts with `,`, `|>` or an opening bracket of a list
+    // that goes on below: split what comes after it.
+    var s: usize = 0;
+    if (toks[0].tag == .comma or isPipe(toks[0]) or (isOpen(toks[0].tag) and closing(toks, 0) == null)) s = 1;
+    if (toks[0].tag == .kw_else and toks.len > 1 and toks[1].tag == .kw_if) s = 1;
+    if (s > last) return null;
+
+    // Type annotations are left as they are.
+    const colons = (try depthZero(a, toks, s, isColon)) orelse return null;
+    if (colons.len > 0) return null;
+
+    // 1. `name = body` and `Pattern -> body`: the body on the next line.
+    const equals = (try depthZero(a, toks, s, isEquals)).?;
+    const arrows = (try depthZero(a, toks, s, isArrow)).?;
+    const fns = (try depthZero(a, toks, s, struct {
+        fn f(t: Token) bool {
+            return t.tag == .kw_fn or t.tag == .kw_if or t.tag == .kw_case;
+        }
+    }.f)).?;
+    const body_break: ?usize = if (equals.len > 0) equals[0] else if (arrows.len > 0 and (fns.len == 0 or fns[0] > arrows[0])) arrows[0] else null;
+    // (Not when the body is one token, such as a long string: it would not
+    // get shorter.)
+    if (body_break) |k| if (k + 1 < last) {
+        try l.line(col0);
+        try l.span(toks, 0, k);
+        try l.line(deeper);
+        try l.span(toks, k + 1, last);
+        try l.s(trailing);
+        return l.out.items;
+    };
+
+    // 2. A pipeline (or a chain of `&&`, `||`, `++`): one line per step.
+    const pipes = (try depthZero(a, toks, s, isPipe)).?;
+    if (pipes.len > 0 and pipes[0] > s) {
+        try l.line(col0);
+        try l.span(toks, 0, pipes[0] - 1);
+        for (pipes, 0..) |p, k| {
+            const to = if (k + 1 < pipes.len) pipes[k + 1] - 1 else last;
+            try l.line(deeper);
+            try l.span(toks, p, to);
+        }
+        try l.s(trailing);
+        return l.out.items;
+    }
+
+    // 3. `if c then a else b`: the branches on lines of their own.
+    if (toks[s].tag == .kw_if) if (try ifParts(toks, s)) |parts| {
+        try l.line(col0);
+        try l.span(toks, 0, parts.then_);
+        try l.line(deeper);
+        try l.span(toks, parts.then_ + 1, parts.else_ - 1);
+        try l.line(col0);
+        if (s == 1 and toks[0].tag != .kw_else) {
+            // `, if ...`: the `else` lines up with the `if`.
+            l.out.items.len -= 1;
+            try l.line(toks[s].col);
+        }
+        if (parts.else_ + 1 <= last and toks[parts.else_ + 1].tag == .kw_if) {
+            try l.span(toks, parts.else_, last);
+        } else {
+            try l.s("else");
+            try l.line(deeper);
+            try l.span(toks, parts.else_ + 1, last);
+        }
+        try l.s(trailing);
+        return l.out.items;
+    };
+
+    // 4. A list, record or tuple: one item per line, with leading commas.
+    const opens = (try depthZero(a, toks, s, isOpenTok)).?;
+    for (opens) |o| {
+        const c = closing(toks, o) orelse continue;
+        // `(fn a, b -> ...)`: those are a lambda's parameters (see 5).
+        if (o + 1 < c and toks[o + 1].tag == .kw_fn) continue;
+        const commas = (try depthZero(a, toks[0..c], o + 1, isComma)) orelse continue;
+        if (commas.len == 0) continue;
+        // A record update `{ r | a = 1, b = 2 }`.
+        const bars = (try depthZero(a, toks[0..c], o + 1, isBar)).?;
+        const is_update = toks[o].tag == .lbrace and bars.len > 0 and bars[0] < commas[0];
+        const at_start = o == s;
+        const bracket_col: u32 = if (at_start) toks[o].col else deeper;
+        if (at_start) {
+            try l.line(col0);
+            if (o > 0) try l.span(toks, 0, o - 1);
+            if (o > 0) try l.s(" ");
+        } else {
+            try l.line(col0);
+            try l.span(toks, 0, o - 1);
+            try l.line(bracket_col);
+        }
+        try l.s(toks[o].text);
+        try l.s(" ");
+        if (is_update) {
+            try l.span(toks, o + 1, bars[0] - 1);
+            try l.line(bracket_col + indent_width);
+            try l.span(toks, bars[0], commas[0] - 1);
+        } else {
+            try l.span(toks, o + 1, commas[0] - 1);
+        }
+        for (commas, 0..) |cm, k| {
+            const to = if (k + 1 < commas.len) commas[k + 1] - 1 else c - 1;
+            try l.line(if (is_update) bracket_col + indent_width else bracket_col);
+            try l.s(", ");
+            try l.span(toks, cm + 1, to);
+        }
+        try l.line(bracket_col);
+        try l.s(toks[c].text);
+        if (c < last) {
+            if (at_start) {
+                try l.s(" ");
+                try l.span(toks, c + 1, last);
+            } else {
+                try l.line(deeper);
+                try l.span(toks, c + 1, last);
+            }
+        }
+        try l.s(trailing);
+        return l.out.items;
+    }
+
+    // 5. `(fn x -> body)`: the body on a line of its own.
+    if (toks[s].tag == .lparen and s + 1 <= last and toks[s + 1].tag == .kw_fn and closing(toks, s) == last) {
+        const arrow = for (toks[s + 1 .. last], s + 1..) |t, k| {
+            if (t.tag == .arrow) break k;
+        } else return null;
+        if (arrow + 1 >= last) return null;
+        try l.line(col0);
+        try l.span(toks, 0, arrow);
+        try l.line(deeper);
+        try l.span(toks, arrow + 1, last - 1);
+        try l.line(if (s == 0) col0 else toks[s].col);
+        try l.s(")");
+        try l.s(trailing);
+        return l.out.items;
+    }
+
+    // 6. `(f a b)`: the call inside split as below, the `)` on its own line.
+    if (toks[s].tag == .lparen and closing(toks, s) == last and last > s + 2) {
+        if (try callArgs(a, toks[0..last], s + 1)) |args| if (args.len >= 1) {
+            try l.line(col0);
+            try l.span(toks, 0, args[0] - 1);
+            for (args, 0..) |arg, k| {
+                const to = if (k + 1 < args.len) args[k + 1] - 1 else last - 1;
+                try l.line(toks[s].col + indent_width);
+                try l.span(toks, arg, to);
+            }
+            try l.line(toks[s].col);
+            try l.s(")");
+            try l.s(trailing);
+            return l.out.items;
+        };
+    }
+
+    // 7. A call `f a b c`: one argument per line. (Not a call with one
+    // argument of one token, such as a long string.)
+    if (try callArgs(a, toks, s)) |args| if (args.len > 1 or (args.len == 1 and args[0] < last)) {
+        try l.line(col0);
+        try l.span(toks, 0, args[0] - 1);
+        for (args, 0..) |arg, k| {
+            const to = if (k + 1 < args.len) args[k + 1] - 1 else last;
+            try l.line(deeper);
+            try l.span(toks, arg, to);
+        }
+        try l.s(trailing);
+        return l.out.items;
+    };
+    return null;
+}
+
+const IfParts = struct { then_: usize, else_: usize };
+
+/// The `then` and `else` of the `if` at `at`, when the whole `if` is on
+/// this line.
+fn ifParts(toks: []const Token, at: usize) Error!?IfParts {
+    var depth: usize = 0;
+    var ifs: usize = 0;
+    var then_: ?usize = null;
+    for (toks[at..], at..) |t, k| {
+        if (isOpen(t.tag)) depth += 1;
+        if (isClose(t.tag)) {
+            if (depth == 0) return null;
+            depth -= 1;
+        }
+        if (depth != 0) continue;
+        switch (t.tag) {
+            .kw_if => ifs += 1,
+            .kw_then => if (ifs == 1 and then_ == null) {
+                then_ = k;
+            },
+            .kw_else => {
+                if (ifs == 1) return if (then_) |th| .{ .then_ = th, .else_ = k } else null;
+                ifs -= 1;
+            },
+            else => {},
+        }
+    }
+    return null;
+}
+
+/// The first token of each argument when `toks[from..]` is a call: a name
+/// followed by arguments that are each one token or one bracketed group,
+/// with no operator between them. Null when it is not such a call.
+fn callArgs(a: Allocator, toks: []const Token, from_tok: usize) Error!?[]usize {
+    // `try f a b` is a call of `f`.
+    const is_try = toks[from_tok].tag == .lower and std.mem.eql(u8, toks[from_tok].text, "try");
+    const from = if (is_try and from_tok + 1 < toks.len) from_tok + 1 else from_tok;
+    const head = toks[from];
+    if (head.tag != .lower and head.tag != .qlower and head.tag != .upper) return null;
+    var args: std.ArrayList(usize) = .empty;
+    var k = from + 1;
+    while (k < toks.len) {
+        const t = toks[k];
+        switch (t.tag) {
+            .lower, .upper, .qlower, .int, .float, .string, .char, .underscore => {
+                try args.append(a, k);
+                k += 1;
+                // `x.field` belongs to its argument.
+                while (k < toks.len and toks[k].tag == .dot_field) k += 1;
+            },
+            .lparen, .lbrack, .lbrace => {
+                try args.append(a, k);
+                k = (closing(toks, k) orelse return null) + 1;
+                while (k < toks.len and toks[k].tag == .dot_field) k += 1;
+            },
+            else => return null,
+        }
+    }
+    return args.items;
 }

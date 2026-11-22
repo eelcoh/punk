@@ -147,7 +147,10 @@ parseEscape = fn bytes, i ->
             if at bytes (i + 5) == '\\' && at bytes (i + 6) == 'u' then
                 second = try hex4 bytes (i + 7)
                 if second >= 0xDC00 && second <= 0xDFFF then
-                    Ok (0x10000 + (first - 0xD800) * 0x400 + (second - 0xDC00), i + 11)
+                    Ok
+                        ( 0x10000 + (first - 0xD800) * 0x400 + (second - 0xDC00)
+                        , i + 11
+                        )
                 else
                     Err "a broken surrogate pair at byte ${U64.toStr i}"
             else
@@ -184,9 +187,15 @@ simpleEscape = fn b ->
 
 hex4 : List U8 -> U64 -> Result U32 Str
 hex4 = fn bytes, i ->
-    digitsAt = [hexDigit (at bytes i), hexDigit (at bytes (i + 1)), hexDigit (at bytes (i + 2)), hexDigit (at bytes (i + 3))]
+    digitsAt =
+        [ hexDigit (at bytes i)
+        , hexDigit (at bytes (i + 1))
+        , hexDigit (at bytes (i + 2))
+        , hexDigit (at bytes (i + 3))
+        ]
     case digitsAt of
-        [Just a, Just b, Just c, Just d] -> Ok (((a * 16 + b) * 16 + c) * 16 + d)
+        [Just a, Just b, Just c, Just d] ->
+            Ok (((a * 16 + b) * 16 + c) * 16 + d)
         _ -> Err "a bad \\u escape at byte ${U64.toStr i}"
 
 hexDigit : U8 -> Maybe U32
@@ -210,7 +219,11 @@ utf8 = fn c ->
     else if c < 0x10000 then
         [U32.toU8Wrap (0xE0 + c // 0x1000), cont (c // 0x40), cont c]
     else
-        [U32.toU8Wrap (0xF0 + c // 0x40000), cont (c // 0x1000), cont (c // 0x40), cont c]
+        [ U32.toU8Wrap (0xF0 + c // 0x40000)
+        , cont (c // 0x1000)
+        , cont (c // 0x40)
+        , cont c
+        ]
 
 cont : U32 -> U8
 cont = fn c ->
@@ -240,12 +253,15 @@ parseNumber = fn bytes, start ->
         afterExp =
             if at bytes afterFrac == 'e' || at bytes afterFrac == 'E' then
                 s = afterFrac + 1
-                digits bytes (if at bytes s == '+' || at bytes s == '-' then s + 1 else s)
+                digits
+                    bytes
+                    (if at bytes s == '+' || at bytes s == '-' then s + 1 else s)
             else
                 afterFrac
         if afterFrac == afterInt + 1 then
             Err (unexpected bytes afterFrac)
-        else if afterExp /= afterFrac && not (isDigit (at bytes (afterExp - 1))) then
+        else if afterExp /= afterFrac
+            && not (isDigit (at bytes (afterExp - 1))) then
             Err (unexpected bytes afterExp)
         else
             case Str.fromUtf8 (List.sublist { start = start, len = afterExp - start } bytes) of

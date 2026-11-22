@@ -38,8 +38,16 @@ main! = fn () ->
     Stdout.line! "json a == b: ${yes (a == b)}"
     Stdout.line! "json a == c: ${yes (a == c)}"
     Stdout.line! "json in a list: ${yes ([a, c] == [b, c])}"
-    t = Labeled [{ key = "x", tree = leaf n }, { key = "y", tree = Pair (Leaf, leaf 2) }]
-    u = Labeled [{ key = "x", tree = leaf 1 }, { key = "y", tree = Pair (Leaf, leaf 2) }]
+    t =
+        Labeled
+            [ { key = "x", tree = leaf n }
+            , { key = "y", tree = Pair (Leaf, leaf 2) }
+            ]
+    u =
+        Labeled
+            [ { key = "x", tree = leaf 1 }
+            , { key = "y", tree = Pair (Leaf, leaf 2) }
+            ]
     Stdout.line! "tree t == u: ${yes (t == u)}"
     Stdout.line! "tree t /= leaf 1: ${yes (t /= leaf 1)}"
     Stdout.line! "distinct values: ${U64.toStr (Set.len (Set.fromList [a, b, c]))}"

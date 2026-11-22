@@ -99,6 +99,8 @@ test "types in error messages are written as in punk" {
     // Nothing to change, or not a type.
     try std.testing.expectEqual(null, try mod.punkType(a, "Str"));
     try std.testing.expectEqual(null, try mod.punkType(a, "this is ( not a type"));
+}
+
 test "equality takes records and tuples apart" {
     try check(
         \\type alias Entry = { key : Str, tree : Tree }

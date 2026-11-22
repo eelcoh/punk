@@ -11,6 +11,9 @@ platforms with Rust hosts on ambit. Read `README.md` first, and
   Eelco may be in Dutch; nothing of that goes into the repository.)
 - Never push, open PRs, issues or comments on upstream Roc (roc-lang/roc).
   Roc changes go to eelcoh/roc's `punkroc` branch only.
+- Call the language "punk-lang" in titles and introductions (README, docs,
+  llms.txt, a website), so it can be found. In code, commands, file
+  extensions, module names and running text it stays `punk`.
 - Default for language design questions: do what Elm does. Prefer pipelines
   (`List.map`, `fold ... into`) over loops; there are none.
 - Keep `punk fmt` output: every `.punk` file in `examples/` must be

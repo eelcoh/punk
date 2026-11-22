@@ -79,3 +79,7 @@ branch: upstream Roc plus a few marked places where it calls punk's seam.
 Twice a month CI merges upstream Roc into that branch, runs all of punk's
 tests with it, and opens a PR here that moves the pin, only when they pass.
 Nothing goes to upstream Roc (roc-lang/roc): no PRs, issues or comments.
+
+## License
+
+[UPL-1.0](LICENSE), the same as Roc's.

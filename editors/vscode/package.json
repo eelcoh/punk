@@ -4,6 +4,7 @@
   "description": "punk-lang for VS Code: syntax highlighting, punk fmt on save, and the problems of punk check --json.",
   "version": "0.1.0",
   "publisher": "eelcoh",
+  "license": "UPL-1.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/eelcoh/punk",
@@ -12,16 +13,30 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Programming Languages", "Formatters", "Linters"],
-  "keywords": ["punk", "punk-lang", "elm", "roc"],
+  "categories": [
+    "Programming Languages",
+    "Formatters",
+    "Linters"
+  ],
+  "keywords": [
+    "punk",
+    "punk-lang",
+    "elm",
+    "roc"
+  ],
   "main": "./extension.js",
   "activationEvents": [],
   "contributes": {
     "languages": [
       {
         "id": "punk",
-        "aliases": ["punk", "punk-lang"],
-        "extensions": [".punk"],
+        "aliases": [
+          "punk",
+          "punk-lang"
+        ],
+        "extensions": [
+          ".punk"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],

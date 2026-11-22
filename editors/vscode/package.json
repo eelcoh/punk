@@ -1,0 +1,74 @@
+{
+  "name": "punk-lang",
+  "displayName": "punk-lang",
+  "description": "punk-lang for VS Code: syntax highlighting, punk fmt on save, and the problems of punk check --json.",
+  "version": "0.1.0",
+  "publisher": "eelcoh",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eelcoh/punk",
+    "directory": "editors/vscode"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Programming Languages", "Formatters", "Linters"],
+  "keywords": ["punk", "punk-lang", "elm", "roc"],
+  "main": "./extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "languages": [
+      {
+        "id": "punk",
+        "aliases": ["punk", "punk-lang"],
+        "extensions": [".punk"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "punk",
+        "scopeName": "source.punk",
+        "path": "./syntaxes/punk.tmLanguage.json"
+      }
+    ],
+    "configurationDefaults": {
+      "[punk]": {
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true,
+        "editor.detectIndentation": false,
+        "editor.formatOnSave": true
+      }
+    },
+    "configuration": {
+      "title": "punk-lang",
+      "properties": {
+        "punk.path": {
+          "type": "string",
+          "default": "punk",
+          "markdownDescription": "The `punk` command. A name on your `PATH` (the install script puts it in `~/.local/bin`) or a full path, such as `zig-out/bin/punk` of a checkout.",
+          "scope": "machine-overridable"
+        },
+        "punk.checkOnSave": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Run `punk check --json` when a `.punk` file is saved, and show its problems."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "punk.check",
+        "title": "punk: Check this file",
+        "enablement": "editorLangId == punk"
+      }
+    ]
+  },
+  "scripts": {
+    "test": "node test/run.mjs"
+  },
+  "devDependencies": {
+    "vscode-oniguruma": "2.0.1",
+    "vscode-textmate": "9.2.0"
+  }
+}

@@ -26,6 +26,23 @@ main! = fn () ->
         |> Stdout.line!
 ```
 
+## Install
+
+On macOS or Linux, without Zig or Rust:
+
+```
+curl -fsSL https://raw.githubusercontent.com/eelcoh/punk/main/install.sh | sh
+```
+
+Once the first release is tagged, this installs the latest release in `~/.punk` (the compiler, the platforms,
+the packages and `llms.txt`), links `punk` into `~/.local/bin`, and checks
+the download against the release's `SHA256SUMS` first. `PUNK_VERSION`,
+`PUNK_HOME` and `PUNK_BIN_DIR` change what and where (see `install.sh`).
+Releases are made by `.github/workflows/release.yml` on a `v*` tag.
+
+For VS Code there is an extension in `editors/vscode/`: highlighting,
+`punk fmt` on save, and the problems of `punk check --json`.
+
 ## Build and run
 
 You need Zig 0.17.1 and Rust (see `src/punk/README.md`, "Zig").
@@ -48,6 +65,8 @@ zig-out/bin/punk fmt examples/elm.punk
 | `platforms/cli`, `server`, `tui` | the platforms: their API and their Rust host |
 | `packages/json` | Elm-style `Json.Decode` / `Json.Encode` |
 | `examples/` | example apps, and the golden tests' programs |
+| `editors/vscode/` | the VS Code extension ([README](editors/vscode/README.md)) |
+| `install.sh`, `tools/release/` | installing a release, and packing one |
 | `test/` | golden tests, setup of the hosts, everything CI runs (`test/ci.sh`) |
 
 ## Roc

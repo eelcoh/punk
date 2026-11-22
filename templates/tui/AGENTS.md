@@ -2,7 +2,7 @@
 
 This is a terminal app in [punk-lang](https://github.com/eelcoh/punk) on the
 `tui` platform (`platform "tui"`), in the Elm architecture:
-`main = { init, update, view }`. Read the language reference first:
+`main = { init = init, update = update, view = view, subscriptions = subscriptions }`. Read the language reference first:
 `~/.punk/current/share/punk/llms.txt` (or `src/punk/llms.txt` in the punk
 repository).
 
@@ -16,8 +16,9 @@ repository).
   error tags.
 - `punk fmt` decides the layout. Every `.punk` file is formatted.
 - Before you say a change is done, the loop below is clean and the tests pass.
-- `update` and `view` are pure. Effects are `Cmd`s that the platform
-  runs, and they answer with a `Msg`.
+- `update`, `view` and `subscriptions` are pure. Effects are `Cmd`s that the
+  platform runs, and they answer with a `Msg`. Keys and timers come in only
+  through `subscriptions`.
 
 ## Work loop
 
@@ -31,5 +32,6 @@ Skills: `punk-check-loop`, `punk-tui-screen` (a new screen, key or effect).
 
 ## What the app can do
 
-Only what the `tui` platform gives: keys and paste, `File.read` and
-`File.list` in the app's folder, `Clock.now`, timers (`Cmd.after`).
+Only what the `tui` platform gives: keys, paste and resize (`Sub`),
+`File.read` and `File.list` in the app's folder, `Clock.now` and
+`Clock.every`, and `Cmd.after`.

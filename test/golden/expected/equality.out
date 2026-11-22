@@ -1,0 +1,7 @@
+json a == b: yes
+json a == c: no
+json in a list: yes
+tree t == u: yes
+tree t /= leaf 1: yes
+distinct values: 2
+exit 0

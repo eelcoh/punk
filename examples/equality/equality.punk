@@ -1,0 +1,48 @@
+app [main!] { Platform: platform "../../platforms/cli/main.roc", Json: "../../packages/json/main.roc" }
+
+import Platform.Stdout
+import Platform.Arg
+import Json.Value
+
+{-| `==` on custom types compares structurally, as in Elm, also for a
+recursive type that holds records and tuples of itself.
+-}
+
+type alias Entry =
+    { key : Str
+    , tree : Tree
+    }
+
+type Tree
+    = Leaf
+    | Node Tree Int Tree
+    | Labeled (List Entry)
+    | Pair (Tree, Tree)
+
+leaf : Int -> Tree
+leaf = fn n -> Node Leaf n Leaf
+
+-- A Json.Value read at run time, so that the compiler can't work it out.
+parsed : Str -> Value
+parsed = fn text ->
+    case Value.parse text of
+        Ok value -> value
+        Err _ -> JNull
+
+main! = fn () ->
+    args = Arg.list! ()
+    n = if List.isEmpty args then 1 else 2
+    a = parsed "{\"a\": [1, null], \"b\": {\"c\": true}}"
+    b = parsed "{\"a\": [1, null], \"b\": {\"c\": true}}"
+    c = parsed "{\"a\": [1, null], \"b\": {\"c\": false}}"
+    Stdout.line! "json a == b: ${yes (a == b)}"
+    Stdout.line! "json a == c: ${yes (a == c)}"
+    Stdout.line! "json in a list: ${yes ([a, c] == [b, c])}"
+    t = Labeled [{ key = "x", tree = leaf n }, { key = "y", tree = Pair (Leaf, leaf 2) }]
+    u = Labeled [{ key = "x", tree = leaf 1 }, { key = "y", tree = Pair (Leaf, leaf 2) }]
+    Stdout.line! "tree t == u: ${yes (t == u)}"
+    Stdout.line! "tree t /= leaf 1: ${yes (t /= leaf 1)}"
+    Stdout.line! "distinct values: ${U64.toStr (Set.len (Set.fromList [a, b, c]))}"
+
+yes : Bool -> Str
+yes = fn b -> if b then "yes" else "no"

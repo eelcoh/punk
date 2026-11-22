@@ -409,6 +409,10 @@ The translator gives Roc its lowercase names (`pf`, `json`).
 - **`==` on your own types.** Every `type` gets `is_eq` and `to_hash`
   methods (equal when the tags and their values are equal), so `outcome ==
   Loops` works and the type can go in a `Set` or be a `Dict` key, as in Elm.
+  A value that is a record or a tuple (or a `List` of them) is compared part
+  by part: Roc's type checker never finishes when such a method compares a
+  record or tuple holding the type itself as a whole (`JObject (List (Str,
+  Value))`). `examples/equality` checks it.
 - **Multi-line strings.** Between `"""` and `"""`. When the text starts on the
   line after the opening quotes and the closing quotes stand on a line of
   their own, those line breaks go, and so does the indentation of the closing

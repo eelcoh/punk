@@ -75,7 +75,7 @@ jobs:
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then v="${GITHUB_REF_NAME#v}"; else v="0.0.0"; fi
           npm version --no-git-tag-version --allow-same-version "$v"
-          npx --yes @vscode/vsce@3 package --no-dependencies --skip-license -o "punk-lang-$v.vsix"
+          npx --yes @vscode/vsce@3 package --no-dependencies -o "punk-lang-$v.vsix"
       - uses: actions/upload-artifact@v4
         with:
           name: punk-vscode

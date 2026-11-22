@@ -1,8 +1,8 @@
-app [main!] { pf: platform "../../platforms/cli/main.roc" }
+app [main!] { Platform: platform "../../platforms/cli/main.roc" }
 
-import pf.Stdout
-import pf.File
-import pf.Arg
+import Platform.Stdout
+import Platform.File
+import Platform.Arg
 
 {-| Advent of Code 2024, day 10: Hoof It.
 

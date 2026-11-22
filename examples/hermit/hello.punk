@@ -1,8 +1,8 @@
-app [main!] { pf: platform "../../platforms/cli/main.roc" }
+app [main!] { Platform: platform "../../platforms/cli/main.roc" }
 
-import pf.Stdout
-import pf.Clock
-import pf.Random
+import Platform.Stdout
+import Platform.Clock
+import Platform.Random
 
 {-| Says hello from inside a Hermit unikernel, and shows that the clock,
 randomness and the list builtins work there. See platforms/cli/hermit.

@@ -1,6 +1,6 @@
-app [main!] { pf: platform "../platforms/cli/main.roc" }
+app [main!] { Platform: platform "../platforms/cli/main.roc" }
 
-import pf.Stdout
+import Platform.Stdout
 
 {-| Numbers as in Elm: dividing an integer by zero gives 0 instead of
 crashing (src/punk/numbers.zig).

@@ -241,7 +241,7 @@ are: one line per `!` call.
 
 punkroc and Roc modules can use each other. When a `.punk` file imports a
 module, the translator reads that module first (`Foo.roc`, or else
-`Foo.punk`, next to the file; `pf.Stdout` in the directory of the platform
+`Foo.punk`, next to the file; `Platform.Stdout` in the directory of the platform
 the app header names) and learns its functions and their arity.
 
 **punkroc modules from punkroc.** Their functions can be partially applied

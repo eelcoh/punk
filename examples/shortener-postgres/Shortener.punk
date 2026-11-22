@@ -1,12 +1,12 @@
-app [handle!] { pf: platform "../../platforms/server/main.roc", json: "../../packages/json/main.roc" }
+app [handle!] { Platform: platform "../../platforms/server/main.roc", Json: "../../packages/json/main.roc" }
 
-import pf.Http exposing [Request, Response]
-import pf.Clock
-import pf.Random
-import pf.Db
-import pf.Config
-import pf.Log
-import json.Decode as D
+import Platform.Http exposing [Request, Response]
+import Platform.Clock
+import Platform.Random
+import Platform.Db
+import Platform.Config
+import Platform.Log
+import Json.Decode as D
 
 {-| A link shortener: ambit's `apps/shortener`, in punk, with its links in
 Postgres instead of a key-value store. The table and its queries are written

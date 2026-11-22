@@ -1,6 +1,6 @@
-app [main!] { pf: platform "../platforms/cli/main.roc" }
+app [main!] { Platform: platform "../platforms/cli/main.roc" }
 
-import pf.Stdout
+import Platform.Stdout
 
 {-| Elm's names in punkroc: List, Tuple, Maybe, String, compare and Int. -}
 

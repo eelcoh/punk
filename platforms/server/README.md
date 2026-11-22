@@ -48,7 +48,7 @@ punk compiles each one to one SQL statement with parameters (no ORM, no
 N+1), and the rows to the query's type:
 
 ```
-import pf.Db
+import Platform.Db
 
 type alias Link =
     { id : Str
@@ -158,9 +158,9 @@ findLink = fn id ->
 ## Postgres: SQL by hand
 
 ```
-import pf.Postgres
-import pf.Sql
-import pf.Row
+import Platform.Postgres
+import Platform.Sql
+import Platform.Row
 
 type alias Link = { created : Int, url : Str }
 

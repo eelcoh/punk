@@ -81,6 +81,38 @@ test "equality takes records and tuples apart" {
     );
 }
 
+test "fn _ for the () of an annotation takes no parameters" {
+    try check(
+        \\greet! : () => {}
+        \\greet! = fn _ -> Stdout.line! "hi"
+        \\
+        \\answer : () -> I64
+        \\answer = fn _ -> 42
+        \\
+        \\ignore : I64 -> I64
+        \\ignore = fn _ -> 0
+        \\
+        \\main! = fn () ->
+        \\    greet! ()
+        \\    answer ()
+    ,
+        \\greet! : () => {}
+        \\greet! = || Stdout.line!("hi")
+        \\
+        \\answer : () -> I64
+        \\answer = || 42
+        \\
+        \\ignore : I64 -> I64
+        \\ignore = |_| 0
+        \\
+        \\main! = || {
+        \\    greet!()
+        \\    answer()
+        \\}
+        \\
+    );
+}
+
 test "functions, application, lambdas" {
     try check(
         \\add : I64, I64 -> I64

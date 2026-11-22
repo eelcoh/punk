@@ -2579,6 +2579,7 @@ pub const Emitter = struct {
     fn bindDef(e: *Emitter, pat: *Pattern, body: *Block) Error!void {
         if (pat.* != .ident) return e.bindPattern(pat);
         const name = try snake(e.a, pat.ident);
+        e.dropUnitParam(name, body);
         var arity: ?u8 = null;
         if (body.stmts.len == 0) if (body.result) |r| {
             arity = try e.exprArity(r);
@@ -2586,6 +2587,18 @@ pub const Emitter = struct {
         const anno = e.annoArity(name);
         if (arity == null or (try e.etaExtra(pat, body)) > 0) arity = anno;
         try e.scope.append(e.a, .{ .name = name, .arity = arity });
+    }
+
+    /// `f : () -> a` with `f = fn _ -> ...`, as Elm allows: the `_` stands
+    /// for the `()` the annotation takes, so the lambda gets no parameters
+    /// (Roc's `|| ...`), the same as `fn () -> ...`.
+    fn dropUnitParam(e: *Emitter, name: []const u8, body: *Block) void {
+        if (body.stmts.len != 0) return;
+        const r = body.result orelse return;
+        if (r.* != .lambda) return;
+        if (r.lambda.params.len != 1 or r.lambda.params[0].* != .underscore) return;
+        if ((e.annoArity(name) orelse return) != 0) return;
+        r.lambda.params = &.{};
     }
 
     /// The arity of the annotation in scope for `name`, if any.

@@ -6,12 +6,15 @@
 //! event to the punk app (`roc_tui_update`), keeps the model the app gives back (a `Box` the host
 //! never looks into), draws the view the app describes, and does the work the app's commands
 //! ask for, off the screen's thread, with the capabilities the wiring handed to [`App::new`]:
-//! the app's folder and the clock. The punk app itself runs only on the screen's thread.
+//! the app's folder and the clock. It also runs the timers of the app's subscriptions
+//! (`Clock.every`) and tells the app when one goes off (`roc_tui_tick`). The punk app itself
+//! runs only on the screen's thread.
 //!
 //! The crate of an app links its archive next to this library and decides, in its wiring, which
 //! folder the app gets and which backend runs it: ambit's native terminal in its `main`, the
 //! deterministic `ambit-tui-sim` in its tests.
 
+use std::collections::BTreeMap;
 use std::ffi::c_void;
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
@@ -31,6 +34,7 @@ pub use view::View;
 struct RocStep {
     cmds: RocStr,
     state: *mut c_void,
+    subs: RocStr,
     view: RocStr,
 }
 
@@ -46,14 +50,24 @@ unsafe extern "C" {
         height: u16,
     ) -> RocStep;
     fn roc_tui_reply(state: *mut c_void, id: u64, ok: bool, text: RocStr) -> RocStep;
+    fn roc_tui_tick(state: *mut c_void, ms: i64, now: i64) -> RocStep;
 }
 
-/// The answer to a piece of work the app asked for, delivered back on the screen's thread.
+/// What comes back to the screen's thread for the app: the answer to a piece of work it asked
+/// for, or a timer of its subscriptions going off.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Reply {
-    id: u64,
-    ok: bool,
-    text: String,
+pub enum Reply {
+    Work {
+        id: u64,
+        ok: bool,
+        text: String,
+    },
+    /// The timer of `ms` milliseconds; `run` tells it from an earlier timer of the same length
+    /// that the app stopped listening to.
+    Tick {
+        ms: i64,
+        run: u64,
+    },
 }
 
 /// A folder for an app that reads no files: every `File.read` and `File.list` fails.
@@ -84,6 +98,9 @@ pub struct App {
     /// The app's state, owned here between calls. Null only before `start`.
     state: *mut c_void,
     view: View,
+    /// The timers of the app's subscriptions that run now: their length, and which run it is.
+    timers: BTreeMap<i64, u64>,
+    runs: u64,
 }
 
 impl App {
@@ -95,6 +112,8 @@ impl App {
             clock: Arc::new(clock),
             state: std::ptr::null_mut(),
             view: View::default(),
+            timers: BTreeMap::new(),
+            runs: 0,
         }
     }
 
@@ -112,13 +131,41 @@ impl App {
     fn step(&mut self, step: RocStep) -> Cmd<Reply> {
         self.state = step.state;
         self.view = View::parse(step.view.as_str());
-        Cmd::Batch(
-            step.cmds
-                .as_str()
-                .lines()
-                .map(|line| self.command(line))
-                .collect(),
-        )
+        let mut cmds: Vec<Cmd<Reply>> = step
+            .cmds
+            .as_str()
+            .lines()
+            .map(|line| self.command(line))
+            .collect();
+        cmds.extend(self.subscribe(step.subs.as_str()));
+        Cmd::Batch(cmds)
+    }
+
+    /// The timers the app listens to now (`Sub.to_host`: one length per line): the new ones
+    /// start, and the ones it no longer listens to stop (their ticks are ignored).
+    fn subscribe(&mut self, subs: &str) -> Vec<Cmd<Reply>> {
+        let wanted: Vec<i64> = subs
+            .lines()
+            .filter_map(|line| line.parse::<i64>().ok())
+            .filter(|ms| *ms > 0)
+            .collect();
+        self.timers.retain(|ms, _| wanted.contains(ms));
+        let mut started = Vec::new();
+        for ms in wanted {
+            if !self.timers.contains_key(&ms) {
+                self.runs += 1;
+                self.timers.insert(ms, self.runs);
+                started.push(timer(ms, self.runs));
+            }
+        }
+        started
+    }
+
+    fn now_ms(&self) -> i64 {
+        match self.clock.now().duration_since(UNIX_EPOCH) {
+            Ok(since) => since.as_millis() as i64,
+            Err(before) => -(before.duration().as_millis() as i64),
+        }
     }
 
     /// One line of `Cmd.to_host`: `quit`, or `<id>\t<kind>\t<arg>`.
@@ -137,8 +184,8 @@ impl App {
         };
         let arg = unescape(arg);
         let reply = move |result: Result<String, String>| match result {
-            Ok(text) => Reply { id, ok: true, text },
-            Err(text) => Reply {
+            Ok(text) => Reply::Work { id, ok: true, text },
+            Err(text) => Reply::Work {
                 id,
                 ok: false,
                 text,
@@ -185,6 +232,17 @@ impl ambit_tui::App for App {
     }
 
     fn update(&mut self, event: Event<Reply>) -> Cmd<Reply> {
+        let event_tick = match &event {
+            Event::Msg(Reply::Tick { ms, run }) => Some((*ms, *run)),
+            _ => None,
+        };
+        // A timer the app stopped listening to: nothing reaches the app.
+        if let Some((ms, run)) = event_tick
+            && self.timers.get(&ms) != Some(&run)
+        {
+            return Cmd::None;
+        }
+        let now = self.now_ms();
         let state = self.take();
         // SAFETY: `state` is the box the app gave back last, which the app takes back here (it
         // owns it from now on, with the other arguments), and it gives a new step, which we own.
@@ -198,12 +256,20 @@ impl ambit_tui::App for App {
                 Event::Resize(width, height) => {
                     roc_tui_update(state, 2, RocStr::empty(), 0, 0, width, height)
                 }
-                Event::Msg(reply) => {
-                    roc_tui_reply(state, reply.id, reply.ok, RocStr::new(&reply.text))
+                Event::Msg(Reply::Work { id, ok, text }) => {
+                    roc_tui_reply(state, id, ok, RocStr::new(&text))
                 }
+                Event::Msg(Reply::Tick { ms, .. }) => roc_tui_tick(state, ms, now),
             }
         };
-        self.step(step)
+        let cmd = self.step(step);
+        // A timer that still runs goes off again.
+        match event_tick {
+            Some((ms, run)) if self.timers.get(&ms) == Some(&run) => {
+                Cmd::Batch(vec![cmd, timer(ms, run)])
+            }
+            _ => cmd,
+        }
     }
 
     fn view(&self, area: Rect, buf: &mut Buffer) {
@@ -211,7 +277,12 @@ impl ambit_tui::App for App {
     }
 }
 
-/// A key as `Event.from_host` reads it: the character, the key's code and the modifiers.
+/// The timer of a subscription: `ms` from now, the app hears of it.
+fn timer(ms: i64, run: u64) -> Cmd<Reply> {
+    Cmd::After(Duration::from_millis(ms as u64), Reply::Tick { ms, run })
+}
+
+/// A key as `Tui.key_from_host` reads it: the character, the key's code and the modifiers.
 fn key_to_host(key: Key) -> (String, u32, u8) {
     let mods = if key.mods.ctrl {
         1

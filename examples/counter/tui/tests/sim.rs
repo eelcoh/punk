@@ -24,10 +24,24 @@ fn counts_keys_and_seconds() {
     assert_eq!(sim.screen().lines().nth(2), Some("│2                 │"));
     sim.advance(Duration::from_millis(1));
     assert_eq!(sim.screen().lines().nth(2), Some("│12                │"));
-    // Each tick asks for the next one.
+    // The clock goes on while the app listens to it.
     sim.advance(Duration::from_millis(2000));
     assert_eq!(sim.screen().lines().nth(2), Some("│32                │"));
     assert_eq!(sim.pending_timers(), 1);
+}
+
+#[test]
+fn p_stops_and_starts_the_clock() {
+    let mut sim = start();
+    sim.key('p');
+    sim.advance(Duration::from_millis(5000));
+    assert_eq!(sim.screen().lines().nth(2), Some("│0                 │"));
+    // Listening again starts a new timer: the old one doesn't come back.
+    sim.key('p');
+    sim.advance(Duration::from_millis(999));
+    assert_eq!(sim.screen().lines().nth(2), Some("│0                 │"));
+    sim.advance(Duration::from_millis(1));
+    assert_eq!(sim.screen().lines().nth(2), Some("│10                │"));
 }
 
 #[test]

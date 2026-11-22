@@ -1,0 +1,167 @@
+app [handle!] { Platform: platform "server", Json: "json" }
+
+import Platform.Http exposing [Request, Response]
+import Platform.Db
+import Platform.Random
+import Platform.Clock
+import Platform.Log
+import Json.Decode as D
+import Json.Encode as E
+import Json.Value
+
+{-| Notes: a JSON API in punk-lang, with its notes in Postgres. This is the
+app of the tutorial "From zero to a JSON API" (docs/tutorial), after its
+migration: each note has the time it was made. ../notes-v1 is the app
+before it.
+
+- `GET /notes`: all notes, as a JSON array, newest first.
+- `POST /notes` with `{"title": "...", "body": "..."}`: a new note, 201 with the note.
+- `GET /notes/<id>`: one note, 404 if there is none.
+- `DELETE /notes/<id>`: removes it, 204.
+-}
+
+-- ANCHOR: table
+type alias Note =
+    { id : Str
+    , title : Str
+    , body : Str
+    , created : Int
+    }
+
+-- The notes, one row each. Everyone may do everything: this API has no
+-- users yet.
+table notes : Note
+    key id
+    read everyone
+    insert everyone
+    update everyone
+    delete everyone
+
+-- ANCHOR_END: table
+
+-- ANCHOR: queries
+allNotes : Db.Query (List Note)
+allNotes =
+    notes
+        |> Db.sortByDescending (fn note -> note.created)
+        |> Db.all
+
+findNote : Str -> Db.Query (Maybe Note)
+findNote = fn id ->
+    notes
+        |> Db.filter (fn note -> note.id == id)
+        |> Db.first
+
+removeNote : Str -> Db.Query Int
+removeNote = fn id ->
+    notes
+        |> Db.filter (fn note -> note.id == id)
+        |> Db.delete
+
+-- ANCHOR_END: queries
+
+-- ANCHOR: json
+-- JSON in: what a client sends for a new note.
+type alias NewNote =
+    { title : Str
+    , body : Str
+    }
+
+newNote : D.Decoder NewNote
+newNote =
+    D.map2 (fn title, body -> { title, body })
+        (D.field "title" D.string)
+        (D.field "body" D.string)
+
+-- JSON out: what a client gets.
+encodeNote : Note -> Value
+encodeNote = fn note ->
+    E.object
+        [ ("id", E.string note.id)
+        , ("title", E.string note.title)
+        , ("body", E.string note.body)
+        , ("created", E.int note.created)
+        ]
+
+-- ANCHOR_END: json
+
+-- ANCHOR: routes
+handle! : Request => Response
+handle! = fn req ->
+    case route! req of
+        Ok response -> response
+        Err (PgErr problem) ->
+            Log.error! "storage failed (${problem.code}): ${problem.message}"
+            problemJson 503 "storage unavailable"
+        Err (RowErr problem) ->
+            Log.error! "a stored note doesn't fit: ${problem}"
+            problemJson 500 "internal error"
+
+route! : Request => Result Response _
+route! = fn req ->
+    case (req.method, Str.splitOn "/" req.path) of
+        ("GET", ["", "notes"]) -> list! ()
+        ("POST", ["", "notes"]) -> create! req.body
+        ("GET", ["", "notes", id]) -> show! id
+        ("DELETE", ["", "notes", id]) -> remove! id
+        _ -> Ok (problemJson 404 "not found")
+
+-- ANCHOR_END: routes
+
+-- ANCHOR: handlers
+list! : () => Result Response _
+list! = fn () ->
+    found = try Db.run! allNotes
+    Ok (json 200 (E.list encodeNote found))
+
+create! : List U8 => Result Response _
+create! = fn body ->
+    case decodeBody newNote body of
+        Err problem -> Ok (problemJson 400 problem)
+        Ok new ->
+            note =
+                { id = "n${U64.toStr (Random.u64! ())}"
+                , title = new.title
+                , body = new.body
+                , created = Clock.now! ()
+                }
+            _ = try Db.run! (Db.insert note notes)
+            Ok (json 201 (encodeNote note))
+
+show! : Str => Result Response _
+show! = fn id ->
+    case try Db.run! (findNote id) of
+        Nothing -> Ok (problemJson 404 "no note ${id}")
+        Just note -> Ok (json 200 (encodeNote note))
+
+remove! : Str => Result Response _
+remove! = fn id ->
+    count = try Db.run! (removeNote id)
+    if count == 0 then
+        Ok (problemJson 404 "no note ${id}")
+    else
+        Ok { status = 204, headers = [], body = [] }
+
+-- ANCHOR_END: handlers
+
+-- ANCHOR: helpers
+-- The body as JSON, decoded; the error says what was wrong.
+decodeBody : D.Decoder a -> List U8 -> Result a Str
+decodeBody = fn decoder, body ->
+    case Str.fromUtf8 body of
+        Err _ -> Err "the body is not UTF-8"
+        Ok text ->
+            D.decodeString decoder text
+                |> Result.mapError D.errorToString
+
+json : U16 -> Value -> Response
+json = fn status, value ->
+    { status
+    , headers = [("content-type", "application/json")]
+    , body = Str.toUtf8 (E.encode 0 value)
+    }
+
+problemJson : U16 -> Str -> Response
+problemJson = fn status, message ->
+    json status (E.object [("error", E.string message)])
+-- ANCHOR_END: helpers

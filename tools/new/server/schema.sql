@@ -1,0 +1,4 @@
+-- Made by `punk check --schema` from the tables of the program: one version
+-- for each change of the tables. The wiring applies each version once, in
+-- order, and refuses a version that changed after it was applied. Change
+-- the tables in the program, not this file.

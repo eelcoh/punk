@@ -22,7 +22,12 @@ sh test/golden.sh
 (cd examples/shortener-mongo/server && cargo test --locked)
 (cd examples/notes/server && cargo test --locked)
 (cd examples/todos/server && cargo test --locked)
+# The notes API of the tutorial (docs/tutorial), before and after its migration.
+zig-out/bin/punk check examples/tutorial/notes-v1/Notes.punk
+(cd examples/tutorial/notes/server && PUNK="$PWD/../../../../zig-out/bin/punk" cargo test --locked)
 # The terminal apps, on ambit's sim terminal: the counter and crossload's
 # library view.
 (cd examples/counter/tui && cargo test --locked)
 (cd examples/library/tui && cargo test --locked)
+# A new app per platform, made with `punk new`.
+sh test/new.sh

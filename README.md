@@ -40,6 +40,15 @@ the download against the release's `SHA256SUMS` first. `PUNK_VERSION`,
 `PUNK_HOME` and `PUNK_BIN_DIR` change what and where (see `install.sh`).
 Releases are made by `.github/workflows/release.yml` on a `v*` tag.
 
+Then make an app, with its `AGENTS.md` and punk's skills, as a git repository:
+
+```
+punk new server notes           # or cli, or tui
+```
+
+In this repository that is `sh tools/new/new.sh server notes`, with the
+platforms of the repository.
+
 For VS Code there is an extension in `editors/vscode/`: highlighting,
 `punk fmt` on save, and the problems of `punk check --json`.
 
@@ -69,6 +78,7 @@ zig-out/bin/punk fmt examples/elm.punk
 | `docs/tutorial/` | the tutorial (mdBook; its code is included from `examples/`) |
 | `editors/vscode/` | the VS Code extension ([README](editors/vscode/README.md)) |
 | `install.sh`, `tools/release/` | installing a release, and packing one |
+| `tools/new/` | `punk new`: the new app per platform |
 | `test/` | golden tests, setup of the hosts, everything CI runs (`test/ci.sh`) |
 
 ## Roc

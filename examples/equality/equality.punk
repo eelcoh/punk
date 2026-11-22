@@ -1,4 +1,4 @@
-app [main!] { Platform: platform "cli", Json: "../../packages/json/main.roc" }
+app [main!] { Platform: platform "cli", Json: "json" }
 
 import Platform.Stdout
 import Platform.Arg

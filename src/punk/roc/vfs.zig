@@ -206,20 +206,21 @@ fn readRawDisk(ctx: ?*anyopaque, allocator: Allocator, path: []const u8) ?[]u8 {
     return std.Io.Dir.cwd().readFileAlloc(raw.io, path, allocator, .limited(256 * 1024 * 1024)) catch null;
 }
 
-/// The platform named `name` (`platform "cli"`) for the app at `app_path`:
-/// the relative path from the app's folder to `platforms/<name>/main.roc`
-/// next to this compiler. That is `<prefix>/platforms` for an installed
-/// punk (`<prefix>/bin/punk`, see install.sh) and the repository's
-/// `platforms` for `zig-out/bin/punk`. The compiler's own path is resolved
-/// first, so a link such as `~/.local/bin/punk` leads to the real one.
-fn findPlatform(ctx: ?*anyopaque, allocator: Allocator, app_path: []const u8, name: []const u8) ?[]const u8 {
+/// The platform or package named `name` (`platform "cli"`, `Json: "json"`)
+/// for the app at `app_path`: the relative path from the app's folder to
+/// `platforms/<name>/main.roc` or `packages/<name>/main.roc` next to this
+/// compiler. That is `<prefix>/platforms` for an installed punk
+/// (`<prefix>/bin/punk`, see install.sh) and the repository's `platforms`
+/// for `zig-out/bin/punk`. The compiler's own path is resolved first, so a
+/// link such as `~/.local/bin/punk` leads to the real one.
+fn findPlatform(ctx: ?*anyopaque, allocator: Allocator, app_path: []const u8, kind: punk.NameKind, name: []const u8) ?[]const u8 {
     const raw: *const Raw = @ptrCast(@alignCast(ctx.?));
     const exe = std.process.executablePathAlloc(raw.io, allocator) catch return null;
     const real = std.Io.Dir.realPathFileAbsoluteAlloc(raw.io, exe, allocator) catch exe;
     const bin = std.fs.path.dirname(real) orelse return null;
     const cwd = std.process.currentPathAlloc(raw.io, allocator) catch return null;
-    for ([_][]const u8{ "../platforms", "../../platforms" }) |up| {
-        const dir = std.fs.path.resolve(allocator, &.{ bin, up }) catch return null;
+    for ([_][]const u8{ "..", "../.." }) |up| {
+        const dir = std.fs.path.resolve(allocator, &.{ bin, up, kind.dir() }) catch return null;
         const main_roc = std.fs.path.join(allocator, &.{ dir, name, "main.roc" }) catch return null;
         std.Io.Dir.accessAbsolute(raw.io, main_roc, .{}) catch continue;
         return punk.platformSpec(allocator, cwd, app_path, dir, name) catch null;

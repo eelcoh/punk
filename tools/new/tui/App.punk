@@ -1,0 +1,49 @@
+app [Model, Msg, main] { Platform: platform "tui" }
+
+import Platform.Tui
+import Platform.Cmd
+import Platform.Sub
+import Platform.Clock
+import Platform.View
+
+{-| @App@: a punk-lang terminal app. It counts key presses, and ten more every
+second. q quits; p pauses the clock.
+-}
+
+type alias Model =
+    { count : Int
+    , paused : Bool
+    }
+
+type Msg
+    = Pressed Tui.Key
+    | Tick Int
+
+main =
+    { init = init, update = update, view = view, subscriptions = subscriptions }
+
+init : (Model, Cmd Msg)
+init =
+    ({ count = 0, paused = False }, Cmd.none)
+
+update : Msg -> Model -> (Model, Cmd Msg)
+update = fn msg, model ->
+    case msg of
+        Pressed (Char "q") -> (model, Cmd.quit)
+        Pressed (Char "p") -> ({ model | paused = not model.paused }, Cmd.none)
+        Pressed _ -> ({ model | count = model.count + 1 }, Cmd.none)
+        Tick _ -> ({ model | count = model.count + 10 }, Cmd.none)
+
+subscriptions : Model -> Sub Msg
+subscriptions = fn model ->
+    if model.paused then
+        Sub.onKey Pressed
+    else
+        Sub.batch [Sub.onKey Pressed, Clock.every 1000 Tick]
+
+view : Model -> View
+view = fn model ->
+    View.column
+        [ View.height 1 (View.text "Counter")
+        , View.block "Count" (View.text (String.fromInt model.count))
+        ]

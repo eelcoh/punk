@@ -1,0 +1,31 @@
+app [handle!] { Platform: platform "server", Json: "json" }
+
+import Platform.Http exposing [Request, Response]
+import Platform.Log
+import Json.Encode as E
+import Json.Value
+
+{-| @App@: a JSON API in punk-lang. The server in `server/` runs it.
+
+- `GET /hello`: `{"hello": "world"}`.
+-}
+
+handle! : Request => Response
+handle! = fn req ->
+    Log.info! "${req.method} ${req.path}"
+    case (req.method, Str.splitOn "/" req.path) of
+        ("GET", ["", "hello"]) ->
+            json 200 (E.object [("hello", E.string "world")])
+        _ -> problemJson 404 "not found"
+
+-- The value as a JSON response.
+json : U16 -> Value -> Response
+json = fn status, value ->
+    { status
+    , headers = [("content-type", "application/json")]
+    , body = Str.toUtf8 (E.encode 0 value)
+    }
+
+problemJson : U16 -> Str -> Response
+problemJson = fn status, message ->
+    json status (E.object [("error", E.string message)])

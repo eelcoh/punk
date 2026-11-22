@@ -475,7 +475,12 @@ outside), and an old column the new row doesn't take is dropped.
 
 ```
 Db.join : table -> (row -> row2 -> Bool) -> query -- JOIN ... ON; the steps after it take a row of each
+Db.leftJoin : table -> (row -> row2 -> Bool) -> query -- LEFT JOIN: the steps after it take a row and a Maybe row2
 Db.filter : (row -> Bool) -> query -> query       -- several filters: AND
+Db.groupBy : (row -> key) -> query -> query       -- GROUP BY: the steps after it take the key and the rows
+Db.count : rows -> Int                            -- in the map after a groupBy: COUNT(*)
+Db.sum : (row -> number) -> rows -> number        -- SUM; Db.min, Db.max keep the column type
+Db.avg : (row -> number) -> rows -> Float         -- AVG
 Db.sortBy : (row -> key) -> query -> query        -- ORDER BY ... ASC; the last sortBy decides first
 Db.sortByDescending : (row -> key) -> query -> query
 Db.drop : Int -> query -> query                   -- OFFSET
@@ -495,7 +500,8 @@ Db.toSql : Db.Query a -> Str
 ```
 
 Joins, sorting and paging stay one SQL statement. The steps come in this
-order: `join`, `filter`, `sortBy`, `drop`, `take`, `map`; after a `join` each
+order: `join` (or `leftJoin`), `filter`, `groupBy`, `sortBy`, `drop`, `take`,
+`map`; after a `join` each
 function takes a row of each table, and the query ends with a `map` that
 names what it gives:
 
@@ -509,6 +515,30 @@ publicNotes =
         |> Db.sortBy (fn _, person -> person.name)   -- by name, then by body
         |> Db.take 20
         |> Db.map (fn note, person -> { name = person.name, body = note.body })
+        |> Db.all
+```
+
+A `leftJoin` keeps the rows that have no match: the joined row is a `Maybe`
+(in its own condition it isn't). Take a column with `Maybe.map .name person`,
+or test `person == Nothing`. A `groupBy` gives one row for each key, and the
+`map` after it says what: the key, and aggregates of the rows. It works on one
+table for now.
+
+```
+allPublicNotes : Db.Query (List { name : Maybe Str, body : Str })
+allPublicNotes =
+    notes
+        |> Db.leftJoin people (fn note, person -> note.owner == person.id)
+        |> Db.filter (fn note, _ -> note.public)
+        |> Db.map (fn note, person -> { name = Maybe.map .name person, body = note.body })
+        |> Db.all
+
+writers : Db.Query (List { owner : Str, count : Int, first : Str })
+writers =
+    notes
+        |> Db.groupBy .owner
+        |> Db.sortBy (fn owner, _ -> owner)
+        |> Db.map (fn owner, rows -> { owner, count = Db.count rows, first = Db.min .body rows })
         |> Db.all
 ```
 

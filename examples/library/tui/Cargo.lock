@@ -17,17 +17,17 @@ checksum = "e9d4ee0d472d1cd2e28c97dfa124b3d8d992e10eb0a035f33f5d12e3a177ba3b"
 [[package]]
 name = "ambit-caps"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=b5f977178e408a4aa96c75d7ed073bb2f65be414#b5f977178e408a4aa96c75d7ed073bb2f65be414"
+source = "git+https://github.com/eelcoh/ambit?rev=d039ab5afb81fe81faa5ce00c41e937e4879ea85#d039ab5afb81fe81faa5ce00c41e937e4879ea85"
 
 [[package]]
 name = "ambit-caps-dir"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=b5f977178e408a4aa96c75d7ed073bb2f65be414#b5f977178e408a4aa96c75d7ed073bb2f65be414"
+source = "git+https://github.com/eelcoh/ambit?rev=d039ab5afb81fe81faa5ce00c41e937e4879ea85#d039ab5afb81fe81faa5ce00c41e937e4879ea85"
 
 [[package]]
 name = "ambit-caps-dir-native"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=b5f977178e408a4aa96c75d7ed073bb2f65be414#b5f977178e408a4aa96c75d7ed073bb2f65be414"
+source = "git+https://github.com/eelcoh/ambit?rev=d039ab5afb81fe81faa5ce00c41e937e4879ea85#d039ab5afb81fe81faa5ce00c41e937e4879ea85"
 dependencies = [
  "ambit-caps-dir",
  "ambit-lockdown",
@@ -38,7 +38,7 @@ dependencies = [
 [[package]]
 name = "ambit-caps-native"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=b5f977178e408a4aa96c75d7ed073bb2f65be414#b5f977178e408a4aa96c75d7ed073bb2f65be414"
+source = "git+https://github.com/eelcoh/ambit?rev=d039ab5afb81fe81faa5ce00c41e937e4879ea85#d039ab5afb81fe81faa5ce00c41e937e4879ea85"
 dependencies = [
  "ambit-caps",
  "ambit-caps-std",
@@ -48,7 +48,7 @@ dependencies = [
 [[package]]
 name = "ambit-caps-net"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=b5f977178e408a4aa96c75d7ed073bb2f65be414#b5f977178e408a4aa96c75d7ed073bb2f65be414"
+source = "git+https://github.com/eelcoh/ambit?rev=d039ab5afb81fe81faa5ce00c41e937e4879ea85#d039ab5afb81fe81faa5ce00c41e937e4879ea85"
 dependencies = [
  "http",
 ]
@@ -56,7 +56,7 @@ dependencies = [
 [[package]]
 name = "ambit-caps-sim"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=b5f977178e408a4aa96c75d7ed073bb2f65be414#b5f977178e408a4aa96c75d7ed073bb2f65be414"
+source = "git+https://github.com/eelcoh/ambit?rev=d039ab5afb81fe81faa5ce00c41e937e4879ea85#d039ab5afb81fe81faa5ce00c41e937e4879ea85"
 dependencies = [
  "ambit-caps",
  "ambit-caps-dir",
@@ -67,7 +67,7 @@ dependencies = [
 [[package]]
 name = "ambit-caps-std"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=b5f977178e408a4aa96c75d7ed073bb2f65be414#b5f977178e408a4aa96c75d7ed073bb2f65be414"
+source = "git+https://github.com/eelcoh/ambit?rev=d039ab5afb81fe81faa5ce00c41e937e4879ea85#d039ab5afb81fe81faa5ce00c41e937e4879ea85"
 dependencies = [
  "ambit-caps",
 ]
@@ -75,7 +75,7 @@ dependencies = [
 [[package]]
 name = "ambit-lockdown"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=b5f977178e408a4aa96c75d7ed073bb2f65be414#b5f977178e408a4aa96c75d7ed073bb2f65be414"
+source = "git+https://github.com/eelcoh/ambit?rev=d039ab5afb81fe81faa5ce00c41e937e4879ea85#d039ab5afb81fe81faa5ce00c41e937e4879ea85"
 dependencies = [
  "ambit-caps-dir",
  "landlock",
@@ -86,7 +86,7 @@ dependencies = [
 [[package]]
 name = "ambit-tui"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=b5f977178e408a4aa96c75d7ed073bb2f65be414#b5f977178e408a4aa96c75d7ed073bb2f65be414"
+source = "git+https://github.com/eelcoh/ambit?rev=d039ab5afb81fe81faa5ce00c41e937e4879ea85#d039ab5afb81fe81faa5ce00c41e937e4879ea85"
 dependencies = [
  "ratatui-core",
 ]
@@ -94,7 +94,7 @@ dependencies = [
 [[package]]
 name = "ambit-tui-native"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=b5f977178e408a4aa96c75d7ed073bb2f65be414#b5f977178e408a4aa96c75d7ed073bb2f65be414"
+source = "git+https://github.com/eelcoh/ambit?rev=d039ab5afb81fe81faa5ce00c41e937e4879ea85#d039ab5afb81fe81faa5ce00c41e937e4879ea85"
 dependencies = [
  "ambit-caps-native",
  "ambit-tui",
@@ -106,7 +106,7 @@ dependencies = [
 [[package]]
 name = "ambit-tui-sim"
 version = "0.1.0"
-source = "git+https://github.com/eelcoh/ambit?rev=b5f977178e408a4aa96c75d7ed073bb2f65be414#b5f977178e408a4aa96c75d7ed073bb2f65be414"
+source = "git+https://github.com/eelcoh/ambit?rev=d039ab5afb81fe81faa5ce00c41e937e4879ea85#d039ab5afb81fe81faa5ce00c41e937e4879ea85"
 dependencies = [
  "ambit-caps-sim",
  "ambit-tui",

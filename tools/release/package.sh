@@ -14,6 +14,8 @@
 #                               per app (see each platform's README)
 #   packages/json/              Json.Decode / Json.Encode
 #   share/punk/llms.txt         the language reference for agents
+#   share/punk/skills/          agent skills per task (skills/), when there are
+#   share/punk/templates/       an AGENTS.md per platform (templates/), when there are
 #   README.md, VERSION
 set -eu
 
@@ -40,6 +42,9 @@ mkdir -p "$stage/bin" "$stage/share/punk" "$stage/platforms" "$stage/packages"
 
 cp zig-out/bin/punk "$stage/bin/punk"
 cp src/punk/llms.txt "$stage/share/punk/llms.txt"
+for d in skills templates; do
+    if [ -d "$d" ]; then cp -R "$d" "$stage/share/punk/$d"; fi
+done
 cp README.md "$stage/README.md"
 printf '%s\n' "$version" > "$stage/VERSION"
 

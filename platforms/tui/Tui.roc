@@ -1,21 +1,13 @@
-## The types of a terminal app's events: what happens to it, in the order it
-## happens. The app's `update` gets each one:
+## The keys of a terminal: what `Sub.onKey` gives the app.
 ##
-##     update : Event Msg -> Model -> (Model, Cmd Msg)
-##     update = fn event, model ->
-##         case event of
-##             Key (Char "j") -> ...
-##             Key (Ctrl "c") -> (model, Cmd.quit)
-##             Resize width height -> ...
-##             Msg (Loaded result) -> ...
+##     subscriptions = fn _ -> Sub.onKey Pressed
+##
+##     update = fn msg, model ->
+##         case msg of
+##             Pressed (Char "j") -> ...
+##             Pressed (Ctrl "c") -> (model, Cmd.quit)
 ##             _ -> (model, Cmd.none)
 Tui := [].{
-    ## `Key` is a key press (releases and repeats are not reported), `Paste`
-    ## text pasted into the terminal in one piece, `Resize` the terminal's
-    ## size in columns and rows (always the first event, and again whenever
-    ## it changes), and `Msg` a message the app asked for with a `Cmd`.
-    Event(msg) : [Key(Key), Paste(Str), Resize(I64, I64), Msg(msg)]
-
     ## A key. `Char "a"` is a character with shift already applied (`"A"`,
     ## not `"a"` and shift), `Ctrl "c"` and `Alt "x"` a character with that
     ## modifier held.
@@ -41,16 +33,9 @@ Tui := [].{
         F(I64),
     ]
 
-    ## The event the host describes with these numbers (see `key_to_host` in `host/src/lib.rs`):
-    ## kind 0 is a key (`code` 0 a character in `text`, the others the keys
-    ## below; `mods` 1 is ctrl, 2 alt), 1 a paste, 2 a resize.
-    event_from_host : U8, Str, U32, U8, U16, U16 -> Event(msg)
-    event_from_host = |kind, text, code, mods, width, height| match kind {
-        1 => Paste(text)
-        2 => Resize(width.to_i64(), height.to_i64())
-        _ => Key(key_from_host(text, code, mods))
-    }
-
+    ## The key the host describes with these numbers (see `key_to_host` in
+    ## `host/src/lib.rs`): `code` 0 is a character in `text`, the others the
+    ## keys below; `mods` 1 is ctrl, 2 alt.
     key_from_host : Str, U32, U8 -> Key
     key_from_host = |text, code, mods| match code {
         0 => match mods {

@@ -19,7 +19,9 @@
 //!   on the connection is nobody's again.
 //! - [`Owner::migrate`] applies the versions of a `schema.sql` that the database doesn't have
 //!   yet, and refuses one that changed after it was applied.
-//! - Without TLS for now: for a database on the same machine or a private network.
+//! - TLS with rustls, as the connection string's `sslmode` says, and required for any
+//!   database that isn't on this machine; the server's certificate is always checked (see
+//!   [`tls`] for the details).
 
 use std::collections::HashMap;
 use std::error::Error;
@@ -31,11 +33,14 @@ use bytes::BytesMut;
 use postgres::config::Host;
 use postgres::fallible_iterator::FallibleIterator;
 use postgres::types::{IsNull, ToSql, Type, to_sql_checked};
-use postgres::{Client, NoTls, Statement};
+use postgres::{Client, Statement};
+use tokio_postgres_rustls::MakeRustlsConnect;
 
 /// A connection string, read with `str::parse` and changed with its setters.
 pub use postgres::Config;
 use punk_server::{Database, DbError, Rows, Transaction, Value};
+
+pub mod tls;
 
 /// How many prepared statements a connection keeps; past that it starts again.
 const STATEMENTS: usize = 256;
@@ -47,6 +52,7 @@ pub struct Postgres {
 
 struct Pool {
     config: postgres::Config,
+    tls: MakeRustlsConnect,
     max: usize,
     wait: Duration,
     state: Mutex<State>,
@@ -66,23 +72,28 @@ struct Connection {
 impl Postgres {
     /// A pool for the database at `url` (`postgres://user:password@localhost/db`, or
     /// `host=localhost user=app dbname=links`), with at most `max` connections. It connects when
-    /// the first query comes, so it can be made while the database is still starting.
+    /// the first query comes, so it can be made while the database is still starting. TLS as
+    /// [`tls`] says: `sslmode` and `sslrootcert` in `url`.
     pub fn new(url: &str, max: usize) -> Result<Self, DbError> {
-        let config: postgres::Config = url.parse().map_err(|e: postgres::Error| {
-            DbError::new("08000", format!("bad connection string: {e}"))
-        })?;
-        Ok(Self::from_config(config, max))
+        let settings = tls::settings(url)?;
+        Ok(Self::with_tls(settings.config, settings.tls, max))
     }
 
     /// The same, for a connection string that [`postgres::Config`] already holds (to change its
-    /// user, for instance).
-    pub fn from_config(mut config: postgres::Config, max: usize) -> Self {
+    /// user, for instance), with its `ssl_mode` and the certificate authorities of Mozilla's list.
+    pub fn from_config(config: postgres::Config, max: usize) -> Self {
+        let tls = tls::connector(None).expect("Mozilla's certificate authorities");
+        Self::with_tls(config, tls, max)
+    }
+
+    fn with_tls(mut config: postgres::Config, tls: MakeRustlsConnect, max: usize) -> Self {
         if config.get_connect_timeout().is_none() {
             config.connect_timeout(Duration::from_secs(5));
         }
         Self {
             pool: Arc::new(Pool {
                 config,
+                tls,
                 max: max.max(1),
                 wait: Duration::from_secs(5),
                 state: Mutex::new(State {
@@ -92,6 +103,11 @@ impl Postgres {
                 freed: Condvar::new(),
             }),
         }
+    }
+
+    /// The role the pool connects as: the user of the connection string.
+    pub fn user(&self) -> Option<&str> {
+        self.pool.config.get_user()
     }
 
     /// Runs SQL that isn't the app's, as the app's role: setting up a test, for instance.
@@ -117,7 +133,7 @@ impl Pool {
                 drop(state);
                 return match self
                     .config
-                    .connect(NoTls)
+                    .connect(self.tls.clone())
                     .map_err(db_error)
                     .and_then(checked)
                 {
@@ -293,14 +309,13 @@ pub struct Owner {
 }
 
 impl Owner {
+    /// Connects to the database at `url`, with TLS as for [`Postgres::new`].
     pub fn connect(url: &str) -> Result<Self, DbError> {
-        let mut config: postgres::Config = url.parse().map_err(|e: postgres::Error| {
-            DbError::new("08000", format!("bad connection string: {e}"))
-        })?;
+        let tls::Settings { mut config, tls } = tls::settings(url)?;
         if config.get_connect_timeout().is_none() {
             config.connect_timeout(Duration::from_secs(5));
         }
-        let client = config.connect(NoTls).map_err(db_error)?;
+        let client = config.connect(tls).map_err(db_error)?;
         Ok(Self {
             client: Mutex::new(client),
         })
@@ -430,14 +445,14 @@ pub mod testing {
             owner.batch(schema_sql).unwrap();
         }
         owner.grant(APP_ROLE).unwrap();
-        let mut config: Config = url.parse().unwrap();
+        let tls::Settings { mut config, tls } = tls::settings(&url).unwrap();
         // Without a database name, Postgres takes the user's: keep the one of the URL.
         if config.get_dbname().is_none() {
             let dbname = config.get_user().unwrap_or("postgres").to_owned();
             config.dbname(&dbname);
         }
         config.user(APP_ROLE).password("punk");
-        Some((owner, Postgres::from_config(config, 2)))
+        Some((owner, Postgres::with_tls(config, tls, 2)))
     }
 
     /// `url` with `schema` as its search path.
@@ -474,6 +489,13 @@ fn versions(schema: &str) -> Result<Vec<(u32, &str)>, DbError> {
             starts.push((version, offset));
         }
         offset += line.len();
+    }
+    // A new app's schema.sql, before it has tables: only comments.
+    let only_comments = schema
+        .lines()
+        .all(|line| line.trim().is_empty() || line.trim_start().starts_with("--"));
+    if starts.is_empty() && only_comments {
+        return Ok(Vec::new());
     }
     if starts.is_empty() {
         return Err(DbError::new(
@@ -697,7 +719,29 @@ impl ToSql for Arg<'_> {
 fn db_error(e: postgres::Error) -> DbError {
     match e.as_db_error() {
         Some(db) => DbError::new(db.code().code(), db.message()),
-        None => DbError::new(e.code().map(|c| c.code()).unwrap_or("08000"), e.to_string()),
+        None => {
+            // With its causes: "error performing TLS handshake: invalid peer certificate: ..."
+            let mut message = e.to_string();
+            let mut source = e.source();
+            while let Some(cause) = source {
+                let cause_text = cause.to_string();
+                if !message.contains(&cause_text) {
+                    message.push_str(": ");
+                    message.push_str(&cause_text);
+                }
+                source = cause.source();
+            }
+            if message.contains("server does not support TLS") {
+                message.push_str(
+                    " (a database that isn't on this machine needs TLS; for one on a private network, add sslmode=disable to the connection string)",
+                );
+            } else if message.contains("UnknownIssuer") {
+                message.push_str(
+                    " (punk checks the server's certificate: give the authority that signed it with sslrootcert=<file.pem>)",
+                );
+            }
+            DbError::new(e.code().map(|c| c.code()).unwrap_or("08000"), message)
+        }
     }
 }
 

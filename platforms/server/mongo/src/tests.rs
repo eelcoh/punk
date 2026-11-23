@@ -203,3 +203,46 @@ fn no_server_is_6() {
         .allow("links", Access::Read);
     assert_eq!(db.find("links", &every()).unwrap_err().code, "6");
 }
+
+#[test]
+fn a_server_elsewhere_needs_tls() {
+    let tls = |uri: &str| Mongo::connect(uri, "t").unwrap().tls();
+    assert!(tls("mongodb://db.example.com/"));
+    assert!(tls(
+        "mongodb://10.0.0.5:27017,10.0.0.6:27017/?replicaSet=rs"
+    ));
+    assert!(!tls("mongodb://localhost/"));
+    assert!(!tls("mongodb://127.0.0.1:27017/"));
+    assert!(!tls("mongodb://db/?tls=false"));
+    assert!(tls("mongodb://localhost/?tls=true"));
+}
+
+/// TLS against `PUNK_TEST_MONGO_TLS`: a server that requires TLS, with a certificate signed by
+/// the authority in `PUNK_TEST_MONGO_CA` (a PEM file). Without them the test says so and passes.
+#[test]
+fn tls_checks_the_servers_certificate() {
+    let (Ok(uri), Ok(ca)) = (
+        std::env::var("PUNK_TEST_MONGO_TLS"),
+        std::env::var("PUNK_TEST_MONGO_CA"),
+    ) else {
+        eprintln!("no PUNK_TEST_MONGO_TLS and PUNK_TEST_MONGO_CA: skipping tls");
+        return;
+    };
+    let separator = if uri.contains('?') { "&" } else { "?" };
+    let ping = |options: &str| {
+        let mongo = Mongo::connect(
+            &format!("{uri}{separator}serverSelectionTimeoutMS=2000&{options}"),
+            "punk_tls",
+        )?;
+        mongo
+            .database()
+            .run_command(doc! { "ping": 1 })
+            .run()
+            .map_err(mongo_error)
+    };
+    // With the authority that signed it.
+    ping(&format!("tls=true&tlsCAFile={ca}")).unwrap();
+    // With Mozilla's list the test authority is unknown, and without TLS the server says no.
+    assert_eq!(ping("tls=true").unwrap_err().code, "6");
+    assert_eq!(ping("tls=false").unwrap_err().code, "6");
+}

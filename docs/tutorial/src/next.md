@@ -1,7 +1,7 @@
 # Next steps
 
-You have a JSON API with a database, a migration and tests. Some things to
-try next:
+You have a JSON API with a database, a migration, tests and a container.
+Some things to try next:
 
 - **Change a note.** Add `PUT /notes/<id>`. Ask your agent: with the skill
   `punk-endpoint` it adds the route, a decoder for the body, the query and a

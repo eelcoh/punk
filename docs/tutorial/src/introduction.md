@@ -19,6 +19,8 @@ for notes, with its notes in Postgres:
    encoders, and routes.
 4. [Change the table](migration.md) and let the server migrate the
    database.
+5. [Run it in a container](container.md), with the database elsewhere and
+   TLS to it.
 
 It takes about half an hour, most of it waiting for downloads.
 

@@ -11,6 +11,8 @@
 #                         `cargo run` builds the app with `punk build`
 #   AGENTS.md             what an agent needs to know (templates/<platform>)
 #   .claude/skills/       the punk skills (skills/), for Claude Code and others
+#   Dockerfile            (server) the app as a container image, for a
+#                         database that runs elsewhere (.dockerignore too)
 #   README.md, .gitignore
 #
 # and makes it a git repository, when git is there and the folder is not
@@ -67,6 +69,9 @@ if [ -f "$here/../../build.zig" ]; then
     ambit_rev=$(sed -n 's/^ambit-caps = .*rev = "\([0-9a-f]*\)".*/\1/p' "$root/platforms/server/host/Cargo.toml")
     toolchain="$root/platforms/server/host/rust-toolchain.toml"
     punk_dep() { printf 'path = "%s/%s"' "$root" "$1"; }
+    # The crate's path dependencies aren't in a container's build: its
+    # Dockerfile needs a release (or PUNK_ARCHIVE and a crate on git).
+    version=$(git -C "$root" describe --tags --abbrev=0 2>/dev/null || echo v0.0.0)
 else
     # An installed punk: <prefix>/share/punk/new/new.sh.
     prefix=$(cd "$here/../../.." && pwd)
@@ -77,6 +82,8 @@ else
     punk_dep() { printf 'git = "https://github.com/eelcoh/punk", tag = "%s"' "$version"; }
 fi
 [ -n "$ambit_rev" ] || die "can't tell which ambit the platforms use"
+rust=$(sed -n 's/^channel = "\(.*\)"/\1/p' "$toolchain")
+[ -n "$rust" ] || die "can't tell which Rust the platforms use"
 ambit="git = \"https://github.com/eelcoh/ambit\", rev = \"$ambit_rev\""
 
 # Copies a template, filling in the names.
@@ -90,6 +97,8 @@ fill() {
         -e "s|@punk:platforms/server/postgres@|$(punk_dep platforms/server/postgres)|g" \
         -e "s|@punk:platforms/tui/host@|$(punk_dep platforms/tui/host)|g" \
         -e "s|@platform@|$platform|g" \
+        -e "s|@rust@|$rust|g" \
+        -e "s|@version@|$version|g" \
         -e "s|App\.punk|$Name.punk|g" \
         "$1" > "$2"
 }
@@ -99,6 +108,8 @@ fill "$here/$platform/App.punk" "$folder/$Name.punk"
 fill "$share/templates/$platform/AGENTS.md" "$folder/AGENTS.md"
 if [ "$platform" = server ]; then
     cp "$here/server/schema.sql" "$folder/schema.sql"
+    fill "$here/server/Dockerfile" "$folder/Dockerfile"
+    cp "$here/server/dockerignore" "$folder/.dockerignore"
 fi
 if [ "$platform" != cli ]; then
     crate_dir="$folder/$platform"

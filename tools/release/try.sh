@@ -27,6 +27,8 @@ grep -qF 'punk-server = { git = "https://github.com/eelcoh/punk", tag = "' my-no
 for f in AGENTS.md .claude/skills/punk-check-loop/SKILL.md; do
     test -f "my-notes/$f" || { echo "try.sh: punk new made no $f:"; find my-notes -not -path '*/.git/*'; exit 1; }
 done
+grep -q "^ARG PUNK_VERSION=$(cat "$work/punk/current/VERSION")\$" my-notes/Dockerfile ||
+    { echo "try.sh: the Dockerfile doesn't install this release:"; grep PUNK_VERSION my-notes/Dockerfile; exit 1; }
 
 "$punk" new tui counter
 "$punk" check counter/Counter.punk

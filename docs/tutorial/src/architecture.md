@@ -42,9 +42,14 @@ tries a newer upstream Roc and moves the pin only when all of punk's tests
 pass.
 
 Why Roc: it has a type checker, fast code generation for many targets
-(including WebAssembly and the Hermit unikernel), and a model where an app
-does no I/O itself. punk gets all of that without writing a compiler
-backend.
+(including WebAssembly and plain x86-64 without an operating system), and a
+model where an app does no I/O itself. punk gets all of that without writing
+a compiler backend.
+
+Roc has no Hermit target of its own. For a unikernel, Roc compiles the app
+for freestanding x86-64 (`x64v1elf`: no libc, no system calls), and the Rust
+host, built for Hermit, links that object into the image. Because the app
+does no I/O, it doesn't need to know it runs on Hermit.
 
 ### The compiled app: no I/O
 
@@ -102,8 +107,9 @@ ambit is used as a Rust library, pinned to one commit in the hosts'
 
 ## The name
 
-The language started as **punk**, a name that points at Roc, the
-compiler it is built on. Later the name was cut short to **punk**. The language, the command and the `.punk` files
-are `punk`; "punk-lang" is the name to search for. You will still meet
+The language started as **punkroc**, a name that points at Roc, the
+compiler it is built on. Later the name was cut short to **punk**. The
+language, the command and the `.punk` files are `punk`; "punk-lang" is the
+name to search for. You will still meet
 "punkroc" in one place: the branch of eelcoh/roc that holds the Roc punk is
 built on.

@@ -29,5 +29,7 @@ zig-out/bin/punk check examples/tutorial/notes-v1/Notes.punk
 # library view.
 (cd examples/counter/tui && cargo test --locked)
 (cd examples/library/tui && cargo test --locked)
+# The shopping list of the tutorial's terminal app.
+(cd examples/tutorial/shopping/tui && PUNK="$PWD/../../../../zig-out/bin/punk" cargo test --locked)
 # A new app per platform, made with `punk new`.
 sh test/new.sh

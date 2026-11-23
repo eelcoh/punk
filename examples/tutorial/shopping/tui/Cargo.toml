@@ -1,0 +1,32 @@
+[package]
+name = "shopping"
+description = "Shopping.punk as a terminal app, on punk's tui platform."
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# `build.rs` compiles ../Shopping.punk with `punk build`.
+[lib]
+name = "shopping"
+path = "src/lib.rs"
+
+[[bin]]
+name = "shopping"
+path = "src/main.rs"
+
+# punk's tui platform, and ambit at the commit that platform uses.
+[dependencies]
+ambit-caps = { git = "https://github.com/eelcoh/ambit", rev = "d039ab5afb81fe81faa5ce00c41e937e4879ea85" }
+ambit-caps-native = { git = "https://github.com/eelcoh/ambit", rev = "d039ab5afb81fe81faa5ce00c41e937e4879ea85" }
+ambit-tui-native = { git = "https://github.com/eelcoh/ambit", rev = "d039ab5afb81fe81faa5ce00c41e937e4879ea85" }
+punk-tui = { path = "../../../../platforms/tui/host" }
+
+[dev-dependencies]
+ambit-caps-sim = { git = "https://github.com/eelcoh/ambit", rev = "d039ab5afb81fe81faa5ce00c41e937e4879ea85" }
+ambit-tui = { git = "https://github.com/eelcoh/ambit", rev = "d039ab5afb81fe81faa5ce00c41e937e4879ea85" }
+ambit-tui-sim = { git = "https://github.com/eelcoh/ambit", rev = "d039ab5afb81fe81faa5ce00c41e937e4879ea85" }
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true

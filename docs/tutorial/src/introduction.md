@@ -22,7 +22,8 @@ for notes, with its notes in Postgres:
 5. [Run it in a container](container.md), with the database elsewhere and
    TLS to it.
 
-It takes about half an hour, most of it waiting for downloads.
+It takes about half an hour, most of it waiting for downloads. After that,
+[a terminal app](tui.md) shows the Elm architecture on the `tui` platform.
 
 Every program in this tutorial is in the punk repository
 ([`examples/tutorial`](https://github.com/eelcoh/punk/tree/main/examples/tutorial)),

@@ -14,3 +14,7 @@
 # About punk-lang
 
 - [How punk is built](architecture.md)
+
+# A terminal app
+
+- [A shopping list in the terminal](tui.md)

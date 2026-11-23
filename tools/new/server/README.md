@@ -47,6 +47,23 @@ the authorities browsers trust. Add `sslrootcert=/certs/ca.pem` to the URLs (and
 `-v "$PWD/certs:/certs:ro"`) for a database with a certificate authority of its own, or
 `sslmode=disable` for one on a private network without TLS.
 
+## As a unikernel
+
+The same server runs as a [Hermit](https://hermit-os.org) unikernel: the app,
+its server and a small kernel in one image of a few MB, booted in QEMU, with
+no operating system around it (`server/src/hermit.rs`). You need QEMU (on a
+Mac: `brew install qemu`):
+
+```
+cd server
+sh unikernel.sh
+```
+
+It builds the image (the first time it also adds Rust's standard library for
+Hermit) and boots it, on http://localhost:8080 as before. Without settings it
+uses Postgres on this computer, which the VM reaches at 10.0.2.2; elsewhere,
+set `DATABASE_URL` and `DATABASE_OWNER_URL`.
+
 ## Change it
 
 ```

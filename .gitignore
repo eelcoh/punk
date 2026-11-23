@@ -11,3 +11,5 @@ target
 docs/tutorial/book
 # Release archives (tools/release/package.sh).
 dist
+# ring, as on crates.io (platforms/server/hermit/vendor), has objects for Windows.
+!platforms/server/hermit/vendor/ring/pregenerated/*.o

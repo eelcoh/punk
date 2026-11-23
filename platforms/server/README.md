@@ -411,6 +411,16 @@ Setup (the Rust std for Hermit, QEMU, the loader) as in
 `platforms/cli/hermit/README.md`. Nothing has to be locked down: the image is
 the whole machine, and the only way in is the port.
 
+An app with Postgres runs as a unikernel too: `punk new server` writes
+`server/src/hermit.rs` (the same wiring as `main.rs`, with the settings from
+the kernel's command line) and `server/unikernel.sh`, which adds the Rust std
+for Hermit when it isn't there, builds the image and boots it in QEMU, against
+Postgres on the same computer (10.0.2.2 in QEMU's network) or the URLs in
+`DATABASE_URL` and `DATABASE_OWNER_URL`. The Postgres driver and TLS need four
+crates with a few changes for Hermit: `hermit/` has them, and why.
+`test/hermit.sh` boots the tutorial's notes API that way and tries it over
+HTTP (the `hermit` job of CI).
+
 ### As a container
 
 `punk new server` writes a `Dockerfile` next to the app: a build on
@@ -451,8 +461,9 @@ shortener checks it too).
 - The query language: grouping a join, filtering groups (`HAVING`), tables shared
   between modules, removing or renaming a whole table in a migration, own types as columns (`type LinkId =
   LinkId Str`), and checking `Sql.query`'s SQL against the tables.
-- Postgres on hermit (the `postgres` crate needs tokio, which doesn't run
-  there yet), and certificates for the app itself (`sslcert`, `tlsCertificateKeyFile`).
+- On hermit: `sslrootcert` (a unikernel has no files) and a test of host
+  names (DNS); see `hermit/README.md`. Certificates for the app itself
+  (`sslcert`, `tlsCertificateKeyFile`).
 - Times, UUIDs, JSON and `numeric` as their own types: convert them in the
   SQL for now.
 

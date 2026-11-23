@@ -9,6 +9,7 @@
 - [A JSON API for notes](notes-api.md)
 - [A migration](migration.md)
 - [In a container](container.md)
+- [As a unikernel](unikernel.md)
 - [Next steps](next.md)
 
 # About punk-lang

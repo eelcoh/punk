@@ -17,12 +17,21 @@ path = "src/main.rs"
 # punk's server platform, and ambit at the commit that platform uses.
 [dependencies]
 ambit-caps = { @ambit@ }
-ambit-lockdown = { @ambit@ }
 ambit-server = { @ambit@ }
-ambit-server-native = { @ambit@ }
 punk-server = { @punk:platforms/server/host@ }
 punk-server-postgres = { @punk:platforms/server/postgres@ }
 tracing = "0.1"
+
+# The wiring on Linux and macOS (src/main.rs): ambit's native backend, locked down.
+[target.'cfg(not(target_os = "hermit"))'.dependencies]
+ambit-lockdown = { @ambit@ }
+ambit-server-native = { @ambit@ }
+
+# The wiring as a Hermit unikernel (src/hermit.rs): ambit's hermit backend, and the kernel with
+# the deployment profile of ambit's run-hermit (QEMU: virtio-net over PCI, ACPI, DHCP).
+[target.'cfg(target_os = "hermit")'.dependencies]
+ambit-server-hermit = { @ambit@ }
+hermit = { git = "https://github.com/hermit-os/hermit-rs.git", tag = "hermit-0.13.2", default-features = false, features = ["acpi", "pci", "tcp", "dhcpv4", "dns", "virtio-net"] }
 
 [dev-dependencies]
 ambit-server-sim = { @ambit@ }
@@ -31,3 +40,11 @@ ambit-server-sim = { @ambit@ }
 panic = "abort"
 codegen-units = 1
 lto = true
+
+# Crates the Postgres driver needs, with what Hermit needs added (punk's
+# platforms/server/hermit). Elsewhere they are the same as on crates.io.
+[patch.crates-io]
+ring = { @punk:platforms/server/hermit/vendor/ring@ }
+socket2 = { @punk:platforms/server/hermit/vendor/socket2@ }
+tokio = { @punk:platforms/server/hermit/vendor/tokio@ }
+whoami = { @punk:platforms/server/hermit/vendor/whoami@ }

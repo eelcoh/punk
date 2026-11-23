@@ -8,15 +8,29 @@
 //! isn't on this computer gets TLS (`sslmode` and `sslrootcert` in the URLs say otherwise). The
 //! server listens on `HOST` (default 127.0.0.1, this computer only; the container's is 0.0.0.0)
 //! and `PORT` (8080). On Linux the server is then locked to its port and the database's port.
+//!
+//! As a Hermit unikernel the wiring is `hermit.rs` instead.
 
+#[cfg(target_os = "hermit")]
+mod hermit;
+
+#[cfg(target_os = "hermit")]
+use hermit::main;
+
+#[cfg(not(target_os = "hermit"))]
 use ambit_lockdown::{Grant, Lockdown};
+#[cfg(not(target_os = "hermit"))]
 use ambit_server_native::{Listen, OsRandom, StdClock};
+#[cfg(not(target_os = "hermit"))]
 use punk_server_postgres::{Owner, Postgres};
 
 /// The settings without `DATABASE_URL` and `DATABASE_OWNER_URL`: Postgres on this computer.
+#[cfg(not(target_os = "hermit"))]
 const APP_URL: &str = "postgres://@crate@_app@localhost/@app@";
+#[cfg(not(target_os = "hermit"))]
 const OWNER_URL: &str = "postgres://localhost/@app@";
 
+#[cfg(not(target_os = "hermit"))]
 fn main() -> std::process::ExitCode {
     ambit_server_native::init_tracing();
     match run() {
@@ -28,6 +42,7 @@ fn main() -> std::process::ExitCode {
     }
 }
 
+#[cfg(not(target_os = "hermit"))]
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let setting = |name: &str, default: &str| std::env::var(name).unwrap_or(default.to_owned());
     let url = setting("DATABASE_URL", APP_URL);

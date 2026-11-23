@@ -28,8 +28,10 @@ use std::error::Error;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
+#[cfg(not(target_os = "hermit"))]
 use ambit_lockdown::{Grant, Grants};
 use bytes::BytesMut;
+#[cfg(not(target_os = "hermit"))]
 use postgres::config::Host;
 use postgres::fallible_iterator::FallibleIterator;
 use postgres::types::{IsNull, ToSql, Type, to_sql_checked};
@@ -90,6 +92,9 @@ impl Postgres {
         if config.get_connect_timeout().is_none() {
             config.connect_timeout(Duration::from_secs(5));
         }
+        // Hermit's kernel has no TCP keepalive: asking for it fails the connection.
+        #[cfg(target_os = "hermit")]
+        config.keepalives(false);
         Self {
             pool: Arc::new(Pool {
                 config,
@@ -315,6 +320,9 @@ impl Owner {
         if config.get_connect_timeout().is_none() {
             config.connect_timeout(Duration::from_secs(5));
         }
+        // Hermit's kernel has no TCP keepalive: asking for it fails the connection.
+        #[cfg(target_os = "hermit")]
+        config.keepalives(false);
         let client = config.connect(tls).map_err(db_error)?;
         Ok(Self {
             client: Mutex::new(client),
@@ -519,6 +527,7 @@ fn quote_ident(name: &str) -> String {
 
 /// What the pool reaches: the port of each host in the connection string, and the resolver when
 /// a host is a name.
+#[cfg(not(target_os = "hermit"))]
 impl Grants for Postgres {
     fn grants(&self) -> Vec<Grant> {
         let ports = self.pool.config.get_ports();

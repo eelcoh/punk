@@ -113,8 +113,10 @@ if [ "$platform" = server ]; then
 fi
 if [ "$platform" != cli ]; then
     crate_dir="$folder/$platform"
+    # Cargo.toml.in: a template named Cargo.toml would be read by cargo as a
+    # package when an app depends on this repository.
     (cd "$here/$platform/$platform" && find . -type f) | while read -r f; do
-        fill "$here/$platform/$platform/$f" "$crate_dir/$f"
+        fill "$here/$platform/$platform/$f" "$crate_dir/${f%.in}"
     done
     fill "$here/build.rs" "$crate_dir/build.rs"
     cp "$toolchain" "$crate_dir/rust-toolchain.toml"

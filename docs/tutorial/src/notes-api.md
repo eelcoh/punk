@@ -142,6 +142,23 @@ of notes, or `route!` stops there with the database's error.
 {{#include ../../../examples/tutorial/notes-v1/Notes.punk:helpers}}
 ```
 
+## Tests next to the code
+
+```elm
+{{#include ../../../examples/tutorial/notes-v1/Notes.punk:tests}}
+```
+
+An `expect` at the top level of the file is a test, next to the code it
+tests, as in Roc. `punk test` runs them:
+
+```sh
+punk test Notes.punk
+```
+
+They test what is pure: decoders, encoders, helpers. What does effects, a
+request through `handle!` to the database, is tested by `server/tests/` in
+Rust, on a real Postgres (see [the next page](migration.md#test-it)).
+
 ## Run it
 
 ```sh
@@ -159,7 +176,7 @@ curl -s localhost:8080/notes -d '{"title": "Shopping", "body": "milk, bread"}'
 curl -s localhost:8080/notes
 # [{"id":"n5049...","title":"Shopping","body":"milk, bread"}]
 curl -s localhost:8080/notes -d '{"title": "no body"}'
-# {"error":"json: Expecting an OBJECT with a field named `body`, but got {\"title\":\"no body\"}"}
+# {"error":"the value: Expecting an OBJECT with a field named `body`, but got {\"title\":\"no body\"}"}
 ```
 
 `psql notes` shows the same row: `SELECT * FROM notes;`.

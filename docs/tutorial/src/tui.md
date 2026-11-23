@@ -102,7 +102,19 @@ selected item, `d` deletes it, `↑` and `↓` move, `q` quits.
 
 ## Test it
 
-`tui/tests/` runs the app on a simulated terminal: keys go in, and the
+The functions that change the list are pure, so they are tested right next
+to them:
+
+```elm
+{{#include ../../../examples/tutorial/shopping/Shopping.punk:tests}}
+```
+
+```sh
+punk test ../Shopping.punk
+```
+
+`empty` is the model `init` starts with. The keys and the screen are tested
+by `tui/tests/`, which runs the app on a simulated terminal: keys go in, and the
 screen comes out as text. The tutorial's
 [tests](https://github.com/eelcoh/punk/blob/main/examples/tutorial/shopping/tui/tests/sim.rs)
 add items, tick them off and delete them, for example:

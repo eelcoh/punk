@@ -25,6 +25,7 @@ repository).
 ```
 punk fmt App.punk
 punk check --json App.punk      # fix the first problem, repeat
+punk test App.punk              # the expect tests next to the code
 cd tui && cargo test --locked   # the app on ambit's sim terminal
 ```
 

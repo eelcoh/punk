@@ -137,7 +137,14 @@ end.
 
 ## Test it
 
-`server/tests/spec.rs` sends requests to the app, on a fresh schema of
+First the tests next to the code. The encoder now has `created`, so its
+`expect` does too:
+
+```sh
+punk test Notes.punk
+```
+
+Then the tests of the whole app. `server/tests/spec.rs` sends requests to the app, on a fresh schema of
 `PUNK_TEST_POSTGRES` for each test. The tutorial's own
 [spec](https://github.com/eelcoh/punk/blob/main/examples/tutorial/notes/server/tests/spec.rs)
 has a test for each route, and one for this migration: it applies version 1,

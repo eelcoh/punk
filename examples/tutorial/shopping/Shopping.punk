@@ -35,7 +35,11 @@ main =
 
 init : (Model, Cmd Msg)
 init =
-    ({ items = [], selected = 0, mode = Browsing }, Cmd.none)
+    (empty, Cmd.none)
+
+empty : Model
+empty =
+    { items = [], selected = 0, mode = Browsing }
 
 subscriptions : Model -> Sub Msg
 subscriptions = fn _ ->
@@ -157,4 +161,20 @@ bottomLine = fn model ->
         Adding name ->
             View.paragraph
                 [[View.span [View.fg Cyan] "New item: ", View.plain name, View.span [View.fg Cyan] "▏"]]
+
 -- ANCHOR_END: view
+
+-- ANCHOR: tests
+-- Tests next to the code: `punk test Shopping.punk` runs them.
+expect (add " milk " empty).items == [{ name = "milk", done = False }]
+
+expect (add "  " empty).items == []
+
+expect (toggle (add "milk" empty)).items == [{ name = "milk", done = True }]
+
+expect (remove (add "bread" (add "milk" empty))).items == [{ name = "milk", done = False }]
+
+expect dropLast "melk" == "mel"
+
+expect dropLast "" == ""
+-- ANCHOR_END: tests

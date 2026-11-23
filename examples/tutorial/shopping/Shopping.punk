@@ -1,0 +1,160 @@
+app [Model, Msg, main] { Platform: platform "tui" }
+
+import Platform.Tui
+import Platform.Cmd
+import Platform.Sub
+import Platform.View
+
+{-| A shopping list in the terminal: the app of the tutorial "A terminal
+app" (docs/tutorial). a adds an item, Space ticks it off, d deletes it,
+↑↓ move, q quits.
+-}
+
+-- ANCHOR: model
+type alias Item =
+    { name : Str
+    , done : Bool
+    }
+
+-- Browsing the list, or typing the name of a new item.
+type Mode
+    = Browsing
+    | Adding Str
+
+type alias Model =
+    { items : List Item
+    , selected : Int
+    , mode : Mode
+    }
+
+type Msg
+    = Pressed Tui.Key
+
+main =
+    { init = init, update = update, view = view, subscriptions = subscriptions }
+
+init : (Model, Cmd Msg)
+init =
+    ({ items = [], selected = 0, mode = Browsing }, Cmd.none)
+
+subscriptions : Model -> Sub Msg
+subscriptions = fn _ ->
+    Sub.onKey Pressed
+
+-- ANCHOR_END: model
+
+-- ANCHOR: update
+update : Msg -> Model -> (Model, Cmd Msg)
+update = fn msg, model ->
+    case msg of
+        Pressed key ->
+            case model.mode of
+                Browsing -> browse key model
+                Adding name -> edit key name model
+
+browse : Tui.Key -> Model -> (Model, Cmd Msg)
+browse = fn key, model ->
+    case key of
+        Char "q" -> (model, Cmd.quit)
+        Char "a" -> ({ model | mode = Adding "" }, Cmd.none)
+        Char " " -> (toggle model, Cmd.none)
+        Char "d" -> (remove model, Cmd.none)
+        Up -> (select (model.selected - 1) model, Cmd.none)
+        Down -> (select (model.selected + 1) model, Cmd.none)
+        _ -> (model, Cmd.none)
+
+edit : Tui.Key -> Str -> Model -> (Model, Cmd Msg)
+edit = fn key, name, model ->
+    case key of
+        Enter -> (add name model, Cmd.none)
+        Esc -> ({ model | mode = Browsing }, Cmd.none)
+        Backspace -> ({ model | mode = Adding (dropLast name) }, Cmd.none)
+        Char c -> ({ model | mode = Adding (name ++ c) }, Cmd.none)
+        _ -> (model, Cmd.none)
+
+-- ANCHOR_END: update
+
+-- ANCHOR: changes
+-- A new item at the end of the list, selected; an empty name adds nothing.
+add : Str -> Model -> Model
+add = fn name, model ->
+    if String.isEmpty (String.trim name) then
+        { model | mode = Browsing }
+    else
+        items = model.items ++ [{ name = String.trim name, done = False }]
+        { model
+            | items = items
+            , selected = List.length items - 1
+            , mode = Browsing
+        }
+
+toggle : Model -> Model
+toggle = fn model ->
+    items =
+        List.indexedMap
+            (fn i, item ->
+                if i == model.selected then
+                    { item | done = not item.done }
+                else
+                    item
+            )
+            model.items
+    { model | items = items }
+
+remove : Model -> Model
+remove = fn model ->
+    items =
+        List.take model.selected model.items
+            ++ List.drop (model.selected + 1) model.items
+    select model.selected { model | items = items }
+
+-- Selects the item at `i`, kept within the list.
+select : Int -> Model -> Model
+select = fn i, model ->
+    { model | selected = max 0 (min (List.length model.items - 1) i) }
+
+-- The text without its last character (which can be more than one byte).
+dropLast : Str -> Str
+dropLast = fn text ->
+    bytes = Str.toUtf8 text
+    List.range 1 4
+        |> List.filterMap
+            (fn n -> Str.fromUtf8 (List.take (List.length bytes - n) bytes))
+        |> List.head
+        |> Maybe.withDefault ""
+
+-- ANCHOR_END: changes
+
+-- ANCHOR: view
+view : Model -> View
+view = fn model ->
+    View.column
+        [ View.height 1 (View.paragraph [[View.span [View.bold] "Shopping"]])
+        , View.block
+            (title model)
+            (View.list model.selected (List.map itemLine model.items))
+        , View.height 1 (bottomLine model)
+        ]
+
+title : Model -> Str
+title = fn model ->
+    left = List.length (List.filter (fn item -> not item.done) model.items)
+    "${String.fromInt left} to get"
+
+itemLine : Item -> View.Line
+itemLine = fn item ->
+    if item.done then
+        [View.span [View.fg Green] "✓ ", View.span [View.dim] item.name]
+    else
+        [View.plain "  ", View.plain item.name]
+
+bottomLine : Model -> View
+bottomLine = fn model ->
+    case model.mode of
+        Browsing ->
+            View.paragraph
+                [[View.span [View.dim] "a add · Space done · d delete · ↑↓ move · q quit"]]
+        Adding name ->
+            View.paragraph
+                [[View.span [View.fg Cyan] "New item: ", View.plain name, View.span [View.fg Cyan] "▏"]]
+-- ANCHOR_END: view

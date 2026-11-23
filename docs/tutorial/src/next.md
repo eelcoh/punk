@@ -15,5 +15,5 @@ Some things to try next:
   reference: syntax, the standard library, the platforms, the query
   language, and what each error code means.
 
-Coming in this tutorial: a terminal app on the `tui` platform, and a
-unikernel.
+Next in this tutorial: [a terminal app](tui.md) on the `tui` platform.
+Coming: a unikernel.

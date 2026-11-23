@@ -64,10 +64,18 @@ allNotes =
 
 `punk check` is left with one problem, `P405`: the table differs from
 `schema.sql`. A new column that isn't a `Maybe` needs a value for the rows
-that are there, so say how an old note becomes a new one. Put this under the
-table:
+that are there, so say how an old note becomes a new one. Add a `migrate`
+to `Notes.punk`, right after the `table notes` block (after its `delete`
+line), at the start of the line like `table` itself:
 
 ```elm
+table notes : Note
+    key id
+    read everyone
+    insert everyone
+    update everyone
+    delete everyone
+
 migrate notes
     fn old -> { old | created = 0 }
 ```
@@ -94,7 +102,7 @@ ALTER TABLE notes ALTER COLUMN created SET NOT NULL;
 ...
 ```
 
-The `migrate` has done its job, so remove it again. A `migrate` that is
+The `migrate` has done its job, so remove its two lines again. A `migrate` that is
 already in `schema.sql` is itself a `P405`, so `punk check` reminds you.
 
 ```sh

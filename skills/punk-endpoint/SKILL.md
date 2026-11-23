@@ -6,16 +6,22 @@ description: Use when adding or changing an HTTP endpoint in a punk server app (
 # Add an endpoint to a punk server app
 
 A server app has one entry point, `handle! : Request => Response`, which
-usually calls a `route! : Request => Result Response _` that matches on
-`(req.method, Str.splitOn "/" req.path)`. Models to copy from are
+usually calls a `route! : Request => Result Response _` that does a `case`
+on `toRoute req`: the app's own `type Route`, one tag per endpoint, read
+from `(Http.method req, Http.segments req)`. Models to copy from are
 `examples/todos/Todos.punk` (a JSON API) and `examples/notes/Notes.punk`
 (users, policies, transactions).
 
 ## Steps
 
-1. **Route.** Add a branch to `route!`, before the catch-all `_ ->`:
-   `("POST", ["", "todos", id, "done"]) -> markDone! id`. A path part bound
-   to a name (`id`) is a parameter.
+1. **Route.** Add a tag to `type Route` (`MarkDone Str`), a branch to
+   `toRoute` before the catch-all `_ ->`:
+   `(Post, ["todos", id, "done"]) -> Just (MarkDone id)`, and a branch to
+   `route!`: `Just (MarkDone id) -> markDone! id` (the compiler says so if
+   you forget it). A path part bound to a name (`id`) is a parameter. Add an
+   `expect` next to `toRoute`:
+   `expect toRoute (Http.request Post "/todos/t1/done") == Just (MarkDone "t1")`,
+   and run `punk test App.punk`.
 2. **Input.** For a JSON body, write a decoder next to the others, in Elm
    style (`D.field "title" D.string`, `D.map2 ...`). Decode with
    `D.decodeString decoder text`, and answer `400` with the decoder's error

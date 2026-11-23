@@ -381,14 +381,37 @@ import Platform.Http exposing [Request, Response]
 
 handle! : Request => Response
 handle! = fn req ->
-    case req.method of
-        "GET" if req.path == "/hello" -> { status = 200, headers = [], body = Str.toUtf8 "hello\n" }
-        _ -> { status = 404, headers = [], body = [] }
+    case toRoute req of
+        Just Hello -> { status = 200, headers = [], body = Str.toUtf8 "hello\n" }
+        Just (Greet name) -> { status = 200, headers = [], body = Str.toUtf8 "hello ${name}\n" }
+        Nothing -> { status = 404, headers = [], body = [] }
+
+-- The app's own type: one tag per route.
+type Route
+    = Hello
+    | Greet Str
+
+toRoute : Request -> Maybe Route
+toRoute = fn req ->
+    case (Http.method req, Http.segments req) of
+        (Get, ["hello"]) -> Just Hello
+        (Get, ["hello", name]) -> Just (Greet name)
+        _ -> Nothing
+
+expect toRoute (Http.request Get "/hello/ann") == Just (Greet "ann")
 ```
+
+Route with a `case` on `(Http.method req, Http.segments req)` into a
+`type Route` of the app's own, not on the text of `req.path`: the `case` in
+`handle!` then has to cover every route, and `toRoute` is a pure function
+to test with `expect`.
 
 ```
 Request : { method : Str, path : Str, query : Str, headers : List (Str, Str), body : List U8 }
 Response : { status : U16, headers : List (Str, Str), body : List U8 }
+Http.method : Request -> Http.Method                -- Get | Head | Post | Put | Patch | Delete | Options | Other Str
+Http.segments : Request -> List Str                 -- "/notes/n1/" is ["notes", "n1"], each part percent-decoded
+Http.request : Http.Method -> Str -> Request        -- a request to test a router on: Http.request Get "/notes?all=1"
 Kv.get! : Str => Result (Maybe Str) [KvErr Str]
 Kv.put! : Str -> Str => Result {} [KvErr Str]      -- key, value
 Kv.delete! : Str => Result {} [KvErr Str]

@@ -116,15 +116,32 @@ changing the type cannot change it by accident.
 ## Routes
 
 ```elm
+{{#include ../../../examples/tutorial/notes-v1/Notes.punk:route-type}}
+```
+
+A `Route` is what a client can ask for, one tag per row of the table above.
+`ShowNote Str` carries the id from the path. `toRoute` reads it from the
+method and the parts of the path: a list pattern like `["notes", id]`
+matches a path of exactly two parts, the first `notes`, and names the
+second `id`. A method or path the API doesn't know is `Nothing`.
+
+The `expect`s are tests, next to the code they test. Run them:
+
+```sh
+punk test Notes.punk
+```
+
+```elm
 {{#include ../../../examples/tutorial/notes-v1/Notes.punk:routes}}
 ```
 
-`route!` matches on the method and the parts of the path, and gives a
-`Result`: the response, or an error from the database. `handle!` turns the
-errors into responses, so a client never sees a crash. The `_` in
-`Result Response _` lets the compiler work out the error type: here what the
-database can return, `PgErr` and `RowErr`. Because `case` must cover every
-case, forgetting one of them is a compile error.
+`route!` does a `case` on the route, and gives a `Result`: the response, or
+an error from the database. Because `case` must cover every tag, adding a
+route to `Route` without handling it here is a compile error.
+`handle!` turns the errors into responses, so a client never sees a crash.
+The `_` in `Result Response _` lets the compiler work out the error type:
+here what the database can return, `PgErr` and `RowErr`. Forgetting one of
+them is a compile error too.
 
 ## Handlers
 

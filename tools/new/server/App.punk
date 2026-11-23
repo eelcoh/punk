@@ -13,10 +13,24 @@ import Json.Value
 handle! : Request => Response
 handle! = fn req ->
     Log.info! "${req.method} ${req.path}"
-    case (req.method, Str.splitOn "/" req.path) of
-        ("GET", ["", "hello"]) ->
-            json 200 (E.object [("hello", E.string "world")])
-        _ -> problemJson 404 "not found"
+    case toRoute req of
+        Just Hello -> json 200 (E.object [("hello", E.string "world")])
+        Nothing -> problemJson 404 "not found"
+
+-- What a request can ask for, one tag per route.
+type Route
+    = Hello
+
+-- The route of a request, `Nothing` when there is no such route.
+toRoute : Request -> Maybe Route
+toRoute = fn req ->
+    case (Http.method req, Http.segments req) of
+        (Get, ["hello"]) -> Just Hello
+        _ -> Nothing
+
+expect toRoute (Http.request Get "/hello") == Just Hello
+
+expect toRoute (Http.request Post "/hello") == Nothing
 
 -- The value as a JSON response.
 json : U16 -> Value -> Response

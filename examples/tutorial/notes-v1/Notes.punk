@@ -81,6 +81,40 @@ encodeNote = fn note ->
 
 -- ANCHOR_END: json
 
+-- ANCHOR: route-type
+-- What a request can ask for: one tag per route, with the parts of the
+-- path it needs.
+type Route
+    = AllNotes
+    | CreateNote
+    | ShowNote Str
+    | RemoveNote Str
+
+-- The route of a request, from its method and the parts of its path;
+-- `Nothing` when the API has no such route.
+toRoute : Request -> Maybe Route
+toRoute = fn req ->
+    case (Http.method req, Http.segments req) of
+        (Get, ["notes"]) -> Just AllNotes
+        (Post, ["notes"]) -> Just CreateNote
+        (Get, ["notes", id]) -> Just (ShowNote id)
+        (Delete, ["notes", id]) -> Just (RemoveNote id)
+        _ -> Nothing
+
+expect toRoute (Http.request Get "/notes") == Just AllNotes
+
+expect toRoute (Http.request Post "/notes/") == Just CreateNote
+
+expect toRoute (Http.request Get "/notes/n12") == Just (ShowNote "n12")
+
+expect toRoute (Http.request Delete "/notes/n12") == Just (RemoveNote "n12")
+
+expect toRoute (Http.request Put "/notes/n12") == Nothing
+
+expect toRoute (Http.request Get "/notes/n12/comments") == Nothing
+
+-- ANCHOR_END: route-type
+
 -- ANCHOR: routes
 handle! : Request => Response
 handle! = fn req ->
@@ -95,12 +129,12 @@ handle! = fn req ->
 
 route! : Request => Result Response _
 route! = fn req ->
-    case (req.method, Str.splitOn "/" req.path) of
-        ("GET", ["", "notes"]) -> list! ()
-        ("POST", ["", "notes"]) -> create! req.body
-        ("GET", ["", "notes", id]) -> show! id
-        ("DELETE", ["", "notes", id]) -> remove! id
-        _ -> Ok (problemJson 404 "not found")
+    case toRoute req of
+        Just AllNotes -> list! ()
+        Just CreateNote -> create! req.body
+        Just (ShowNote id) -> show! id
+        Just (RemoveNote id) -> remove! id
+        Nothing -> Ok (problemJson 404 "not found")
 
 -- ANCHOR_END: routes
 

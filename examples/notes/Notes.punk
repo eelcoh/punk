@@ -163,20 +163,50 @@ handle! = fn req ->
 
 route! : User -> Request => Result Response _
 route! = fn user, req ->
-    case (req.method, Str.splitOn "/" req.path) of
-        ("POST", ["", "notes"]) -> add! user req.body
-        ("GET", ["", "notes"]) -> list! user
-        ("POST", ["", "notes", id, "publish"]) ->
-            changed (try Db.runAs! user (publish id))
-        ("POST", ["", "notes", id, "pin"]) ->
-            Db.transactionAs! user (fn _ -> pinOnly! user id)
-        ("DELETE", ["", "notes", id]) ->
-            changed (try Db.runAs! user (remove id))
-        ("PUT", ["", "me"]) -> setName! user req.body
-        ("GET", ["", "public"]) -> listPublic! user
-        ("GET", ["", "public", "all"]) -> listAllPublic! user
-        ("GET", ["", "writers"]) -> listWriters! user
-        _ -> Ok (text 404 "not found\n")
+    case toRoute req of
+        Just AddNote -> add! user req.body
+        Just MyNotes -> list! user
+        Just (Publish id) -> changed (try Db.runAs! user (publish id))
+        Just (Pin id) -> Db.transactionAs! user (fn _ -> pinOnly! user id)
+        Just (RemoveNote id) -> changed (try Db.runAs! user (remove id))
+        Just SetName -> setName! user req.body
+        Just PublicNotes -> listPublic! user
+        Just AllPublicNotes -> listAllPublic! user
+        Just Writers -> listWriters! user
+        Nothing -> Ok (text 404 "not found\n")
+
+-- What a request can ask for, one tag per route.
+type Route
+    = AddNote
+    | MyNotes
+    | Publish Str
+    | Pin Str
+    | RemoveNote Str
+    | SetName
+    | PublicNotes
+    | AllPublicNotes
+    | Writers
+
+-- The route of a request, `Nothing` when there is no such route.
+toRoute : Request -> Maybe Route
+toRoute = fn req ->
+    case (Http.method req, Http.segments req) of
+        (Post, ["notes"]) -> Just AddNote
+        (Get, ["notes"]) -> Just MyNotes
+        (Post, ["notes", id, "publish"]) -> Just (Publish id)
+        (Post, ["notes", id, "pin"]) -> Just (Pin id)
+        (Delete, ["notes", id]) -> Just (RemoveNote id)
+        (Put, ["me"]) -> Just SetName
+        (Get, ["public"]) -> Just PublicNotes
+        (Get, ["public", "all"]) -> Just AllPublicNotes
+        (Get, ["writers"]) -> Just Writers
+        _ -> Nothing
+
+expect toRoute (Http.request Post "/notes/n1/pin") == Just (Pin "n1")
+
+expect toRoute (Http.request Get "/public/all") == Just AllPublicNotes
+
+expect toRoute (Http.request Get "/notes/n1/pin") == Nothing
 
 add! : User -> List U8 => Result Response _
 add! = fn user, body ->

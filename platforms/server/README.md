@@ -13,14 +13,25 @@ import Platform.Kv
 
 handle! : Request => Response
 handle! = fn req ->
-    case (req.method, req.path) of
-        ("GET", "/hello") -> { status = 200, headers = [], body = Str.toUtf8 "hello\n" }
-        _ -> { status = 404, headers = [], body = [] }
+    case toRoute req of
+        Just Hello -> { status = 200, headers = [], body = Str.toUtf8 "hello\n" }
+        Nothing -> { status = 404, headers = [], body = [] }
+
+type Route
+    = Hello
+
+toRoute : Request -> Maybe Route
+toRoute = fn req ->
+    case (Http.method req, Http.segments req) of
+        (Get, ["hello"]) -> Just Hello
+        _ -> Nothing
+
+expect toRoute (Http.request Get "/hello") == Just Hello
 ```
 
 | Module | Functions |
 |--------|-----------|
-| `Http` | the types `Request` (`method`, `path`, `query`, `headers`, `body : List U8`) and `Response` (`status : U16`, `headers`, `body : List U8`) |
+| `Http` | the types `Request` (`method`, `path`, `query`, `headers`, `body : List U8`) and `Response` (`status : U16`, `headers`, `body : List U8`); for routing `method : Request -> Method` (`Get`, `Head`, `Post`, `Put`, `Patch`, `Delete`, `Options`, `Other Str`), `segments : Request -> List Str` (the parts of the path, percent-decoded), and `request : Method -> Str -> Request` for tests |
 | `Kv` | `get! : Str => Result (Maybe Str) [KvErr Str]`, `put! key value`, `delete! key` (both `Result {} [KvErr Str]`) |
 | `Clock` | `now! : () => I64` (milliseconds since 1970) |
 | `Random` | `u64! : () => U64` |

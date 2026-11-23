@@ -107,13 +107,38 @@ handle! = fn req ->
 
 route! : Request => Result Response _
 route! = fn req ->
-    case (req.method, Str.splitOn "/" req.path) of
-        ("GET", ["", "todos"]) -> list! ()
-        ("POST", ["", "todos"]) -> create! req.body
-        ("GET", ["", "todos", id]) -> show! id
-        ("PUT", ["", "todos", id]) -> update! id req.body
-        ("DELETE", ["", "todos", id]) -> remove! id
-        _ -> Ok (problemJson 404 "not found")
+    case toRoute req of
+        Just AllTodos -> list! ()
+        Just CreateTodo -> create! req.body
+        Just (ShowTodo id) -> show! id
+        Just (UpdateTodo id) -> update! id req.body
+        Just (RemoveTodo id) -> remove! id
+        Nothing -> Ok (problemJson 404 "not found")
+
+-- What a request can ask for, one tag per route.
+type Route
+    = AllTodos
+    | CreateTodo
+    | ShowTodo Str
+    | UpdateTodo Str
+    | RemoveTodo Str
+
+-- The route of a request, `Nothing` when there is no such route.
+toRoute : Request -> Maybe Route
+toRoute = fn req ->
+    case (Http.method req, Http.segments req) of
+        (Get, ["todos"]) -> Just AllTodos
+        (Post, ["todos"]) -> Just CreateTodo
+        (Get, ["todos", id]) -> Just (ShowTodo id)
+        (Put, ["todos", id]) -> Just (UpdateTodo id)
+        (Delete, ["todos", id]) -> Just (RemoveTodo id)
+        _ -> Nothing
+
+expect toRoute (Http.request Get "/todos") == Just AllTodos
+
+expect toRoute (Http.request Put "/todos/t7") == Just (UpdateTodo "t7")
+
+expect toRoute (Http.request Patch "/todos/t7") == Nothing
 
 -- ANCHOR_END: routes
 

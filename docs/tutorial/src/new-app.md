@@ -50,16 +50,42 @@ import Json.Value
 handle! : Request => Response
 handle! = fn req ->
     Log.info! "${req.method} ${req.path}"
-    case (req.method, Str.splitOn "/" req.path) of
-        ("GET", ["", "hello"]) ->
-            json 200 (E.object [("hello", E.string "world")])
-        _ -> problemJson 404 "not found"
+    case toRoute req of
+        Just Hello -> json 200 (E.object [("hello", E.string "world")])
+        Nothing -> problemJson 404 "not found"
+
+-- What a request can ask for, one tag per route.
+type Route
+    = Hello
+
+-- The route of a request, `Nothing` when there is no such route.
+toRoute : Request -> Maybe Route
+toRoute = fn req ->
+    case (Http.method req, Http.segments req) of
+        (Get, ["hello"]) -> Just Hello
+        _ -> Nothing
+
+expect toRoute (Http.request Get "/hello") == Just Hello
+
+expect toRoute (Http.request Post "/hello") == Nothing
 ```
 
 The first line says that this is an app for the `server` platform, that it
 gives the platform one function, `handle!`, and that it uses the `json`
 package that comes with punk. The server calls `handle!` for each request.
 The `!` says that it does effects: here it only writes to the log.
+
+`handle!` doesn't look at the text of the path itself. `toRoute` turns the
+request into a `Route`, a type of your own with one tag per thing a client
+can ask for, and `handle!` does a `case` on that. `Http.method` gives the
+method as a tag (`Get`, `Post`, `Put`, `Delete`, ...), and `Http.segments`
+the parts of the path (`/hello` is `["hello"]`). Because `case` must cover
+every tag, a route you add to `Route` but forget in `handle!` is a compile
+error.
+
+`toRoute` does no effects, so you can test it right where it is: each
+`expect` is a test, and `punk test Notes.punk` runs them.
+`Http.request Get "/hello"` makes a request to try it on.
 
 ## Run it
 
@@ -104,6 +130,7 @@ Three commands do most of the work while you write punk:
 ```sh
 punk check Notes.punk    # does it compile? the problems, with what to do
 punk fmt Notes.punk      # the one layout (VS Code does this when you save)
+punk test Notes.punk     # the expects in Notes.punk
 cargo test               # in server/: the tests in server/tests/spec.rs
 ```
 

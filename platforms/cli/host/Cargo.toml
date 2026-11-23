@@ -1,6 +1,6 @@
 [package]
 name = "punk-cli-host"
-description = "Host of punkroc's cli platform: ambit's cli platform, wired to a compiled punk app through Roc's C ABI."
+description = "Host of punk's cli platform: ambit's cli platform, wired to a compiled punk app through Roc's C ABI."
 version = "0.1.0"
 edition = "2024"
 publish = false

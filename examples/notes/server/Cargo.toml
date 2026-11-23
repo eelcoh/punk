@@ -1,6 +1,6 @@
 [package]
 name = "punk-notes"
-description = "Notes per user in punk (../Notes.punk), kept apart by row-level security in Postgres, on punkroc's server platform."
+description = "Notes per user in punk (../Notes.punk), kept apart by row-level security in Postgres, on punk's server platform."
 version = "0.1.0"
 edition = "2024"
 publish = false

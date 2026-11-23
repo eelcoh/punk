@@ -7,7 +7,9 @@ decoders), compiled by the Roc compiler, on platforms whose hosts are Rust
 agents and meant to be easy for a person to read: if it compiles, it runs.
 
 The language and its command are called `punk`, and its files end in
-`.punk`. "punk-lang" is the name to search for.
+`.punk`. "punk-lang" is the name to search for. It started as "punkroc", a
+name that points at Roc, the compiler it is built on, and was later cut short
+to `punk`.
 
 ```elm
 app [main!] { Platform: platform "cli" }
@@ -80,6 +82,14 @@ zig-out/bin/punk fmt examples/elm.punk
 | `install.sh`, `tools/release/` | installing a release, and packing one |
 | `tools/new/` | `punk new`: the new app per platform |
 | `test/` | golden tests, setup of the hosts, everything CI runs (`test/ci.sh`) |
+
+## How it fits together
+
+punk uses Zig for the compiler (Roc's compiler with punk's translator in
+front), Roc inside it, and Rust (on ambit) for the platforms that run an app.
+They meet only in the finished program, through the C ABI.
+[How punk is built](docs/tutorial/src/architecture.md) explains why there are
+three, where each one sits, and which of them you need.
 
 ## Roc
 

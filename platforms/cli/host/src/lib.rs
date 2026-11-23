@@ -1,4 +1,4 @@
-//! Host of punkroc's `cli` platform.
+//! Host of punk's `cli` platform.
 //!
 //! roc compiles a punk app to an object that does no I/O itself. It calls the functions this
 //! library exports (`roc_alloc`, `roc_stdout_line`, ...) with Roc's C ABI, and this library's

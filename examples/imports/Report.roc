@@ -1,5 +1,5 @@
-## A plain Roc module that uses the punkroc module Math.punk: to Roc, a
-## punkroc module is an ordinary module, with snake_case names.
+## A plain Roc module that uses the punk module Math.punk: to Roc, a
+## punk module is an ordinary module, with snake_case names.
 import Math
 
 Report := [].{

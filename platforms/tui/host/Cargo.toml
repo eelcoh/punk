@@ -1,6 +1,6 @@
 [package]
 name = "punk-tui"
-description = "Host of punkroc's tui platform: a compiled punk app as an ambit tui App."
+description = "Host of punk's tui platform: a compiled punk app as an ambit tui App."
 version = "0.1.0"
 edition = "2024"
 publish = false

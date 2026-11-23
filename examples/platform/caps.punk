@@ -5,7 +5,7 @@ import Platform.File
 import Platform.Clock
 import Platform.Random
 
-{-| The capabilities of punkroc's cli platform: the clock, randomness, and
+{-| The capabilities of punk's cli platform: the clock, randomness, and
 only the files named on the command line. Run with `out.txt` as argument.
 -}
 

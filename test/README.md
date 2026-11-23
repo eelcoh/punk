@@ -1,4 +1,4 @@
-# punkroc's tests
+# punk's tests
 
 The platform punk programs run on is `platforms/cli` (see its README). Build
 its host, and the host of upstream's `test/fx/platform` that some examples
@@ -31,9 +31,9 @@ zig build
 (cd examples/shortener/server && cargo test)
 ```
 
-The `punkroc` workflow (`.github/workflows/punk.yml`) runs these, together
+The `punk` workflow (`.github/workflows/punk.yml`) runs these, together
 with `zig test src/punk/test.zig` and the `cargo test`s of the platform hosts and
-the shortener, on every PR into `punkroc`. On the 1st and
-15th of each month it also merges upstream Roc's `main` into a new branch,
-runs the same tests, and opens a PR only when they pass (or an issue when
-they do not).
+the shortener, on every push to and PR into `main`. On the 1st and
+15th of each month it also merges upstream Roc's `main` into eelcoh/roc's
+`punkroc` branch, runs the same tests, and opens a PR that moves the pin only
+when they pass (or an issue when they do not).

@@ -1,4 +1,4 @@
-# punkroc's cli platform
+# punk's cli platform
 
 The platform for punk command-line programs, such as Advent of Code
 solutions. Its host is written in Rust, on [ambit](https://github.com/eelcoh/ambit)'s
@@ -87,7 +87,7 @@ but has not been tried yet; Windows has no host yet.
 At the end of a run the host checks that every byte the app allocated was
 freed, and says so on stderr when not.
 
-### ambit and punkroc
+### ambit and punk
 
 Neither repository depends on the other's build. `host/Cargo.toml` uses
 ambit's crates as a Rust library, pinned to one commit of `eelcoh/ambit`

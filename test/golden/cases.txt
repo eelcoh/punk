@@ -1,4 +1,4 @@
-# Golden tests for punkroc: every program in examples/ is run and its
+# Golden tests for punk: every program in examples/ is run and its
 # output compared with test/golden/expected/<case>.out.
 #
 # One case per line:   <case>  <program>  [stdin]  [args...]

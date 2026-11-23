@@ -362,10 +362,10 @@ test "records" {
 }
 
 test "no var, for, while or return" {
-    try checkError("sum = fn xs ->\n    var total = 0\n    total\n", 2, "punkroc has no 'var'");
+    try checkError("sum = fn xs ->\n    var total = 0\n    total\n", 2, "punk has no 'var'");
     try checkError("f = fn xs ->\n    for x in xs\n        x\n", 2, "use 'fold x in xs");
-    try checkError("f = fn n ->\n    while n > 0\n        n\n", 2, "punkroc has no 'while'");
-    try checkError("f = fn n ->\n    return n\n", 2, "punkroc has no 'return'");
+    try checkError("f = fn n ->\n    while n > 0\n        n\n", 2, "punk has no 'while'");
+    try checkError("f = fn n ->\n    return n\n", 2, "punk has no 'return'");
 }
 
 test "fold: inline, and without the list in a pipe" {

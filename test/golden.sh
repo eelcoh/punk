@@ -1,5 +1,5 @@
 #!/bin/sh
-# Golden tests: runs the punkroc examples listed in test/golden/cases.txt
+# Golden tests: runs the punk examples listed in test/golden/cases.txt
 # and compares their output (stdout, exit code and any file they write) with
 # test/golden/expected/. Run from the repo root, after `zig build`
 # and `sh test/setup.sh`:

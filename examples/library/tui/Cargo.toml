@@ -1,6 +1,6 @@
 [package]
 name = "punk-library"
-description = "The library view of crossload, written in punk (../Library.punk), on punkroc's tui platform."
+description = "The library view of crossload, written in punk (../Library.punk), on punk's tui platform."
 version = "0.1.0"
 edition = "2024"
 publish = false

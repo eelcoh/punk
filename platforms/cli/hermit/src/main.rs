@@ -1,4 +1,4 @@
-//! Spike: the host of punkroc's `cli` platform as a Hermit unikernel.
+//! Spike: the host of punk's `cli` platform as a Hermit unikernel.
 //!
 //! The same C ABI as `platforms/cli/host`: the app calls `roc_alloc`, `roc_stdout_line`, ...
 //! and this program's `main` calls the app's `roc_main`. Memory and Roc's values come from

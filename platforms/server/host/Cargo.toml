@@ -1,6 +1,6 @@
 [package]
 name = "punk-server"
-description = "Host of punkroc's server platform: a compiled punk app as an ambit server Handler."
+description = "Host of punk's server platform: a compiled punk app as an ambit server Handler."
 version = "0.1.0"
 edition = "2024"
 publish = false

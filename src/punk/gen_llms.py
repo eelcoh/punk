@@ -1,4 +1,4 @@
-"""Writes src/punk/llms.txt, punkroc's reference for agents, from
+"""Writes src/punk/llms.txt, punk's reference for agents, from
 src/punk/llms.in.md and the source code, so it does not go stale:
 
     python3 src/punk/gen_llms.py            write src/punk/llms.txt
@@ -6,13 +6,13 @@ src/punk/llms.in.md and the source code, so it does not go stale:
 
 In llms.in.md:
 
-    @@stdlib@@          the signatures of the standard library, as punkroc
+    @@stdlib@@          the signatures of the standard library, as punk
                         sees them: names, argument order and types come from
                         stdlib.zig, elm.zig and Builtin.roc
     @@example <path>@@  the file examples/<path>, which the golden tests
                         run, so every cookbook example is known to work
 
-A name in STDLIB below that punkroc no longer has is an error, as is a
+A name in STDLIB below that punk no longer has is an error, as is a
 helper in elm.zig whose signature is missing from HELPERS.
 """
 
@@ -33,7 +33,7 @@ def read(rel):
         return f.read()
 
 
-# The functions listed, by module, in punkroc spelling. The type and argument
+# The functions listed, by module, in punk spelling. The type and argument
 # order of builtins come from Builtin.roc and stdlib.zig.
 STDLIB = {
     "List": [
@@ -67,7 +67,7 @@ STDLIB = {
 }
 
 # Signatures of the helpers in elm.zig and numbers.zig, which are not in
-# Builtin.roc, in punkroc syntax (by their snake_case name in Roc).
+# Builtin.roc, in punk syntax (by their snake_case name in Roc).
 HELPERS = {
     "List.range": "Int -> Int -> List Int",
     "List.head": "List a -> Maybe a",
@@ -152,7 +152,7 @@ def builtin_sigs():
     return sigs
 
 
-# Roc types to punkroc types.
+# Roc types to punk types.
 
 def split_top(s, sep=","):
     parts, depth, cur = [], 0, ""
@@ -196,7 +196,7 @@ def needs_parens(t):
 
 
 def ty(s, state_last=False):
-    """A Roc type in punkroc syntax."""
+    """A Roc type in punk syntax."""
     s = s.strip()
     s = re.sub(r"\s+where\s+\[.*\]$", "", s)
     f = fn_parts(s)
@@ -264,10 +264,10 @@ def signature(mod, name, fns, aliases, renames, helpers, sigs):
     rmod = MODULE_ALIASES.get(rmod, rmod)
     roc = f"{rmod}.{rname}"
     if roc not in fns or roc not in sigs:
-        sys.exit(f"gen_llms.py: punkroc has no {mod + '.' if mod else ''}{name} (looked for {roc})")
+        sys.exit(f"gen_llms.py: punk has no {mod + '.' if mod else ''}{name} (looked for {roc})")
     arity, order, state_last = fns[roc]
     if rname == "empty":
-        # A value in punkroc (`Set.empty`), a function in Roc.
+        # A value in punk (`Set.empty`), a function in Roc.
         return ty(fn_parts(sigs[roc])[2])
     f = fn_parts(sigs[roc])
     if f is None:

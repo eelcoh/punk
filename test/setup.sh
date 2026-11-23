@@ -1,8 +1,8 @@
 #!/bin/sh
-# Builds the hosts of the platforms the punkroc examples use and puts them
+# Builds the hosts of the platforms the punk examples use and puts them
 # where `roc` looks for them, for this computer:
 #
-# - platforms/cli: punkroc's own platform. Its host is Rust, on ambit
+# - platforms/cli: punk's own platform. Its host is Rust, on ambit
 #   (platforms/cli/host), built with cargo.
 #
 # Run from the repo root:
@@ -16,12 +16,12 @@ set -e
 want=$(sed -n 's/.*minimum_zig_version = "\(.*\)".*/\1/p' build.zig.zon)
 have=$(zig version 2>/dev/null || echo none)
 if [ "$have" != "$want" ]; then
-    echo "punkroc needs Zig $want, but 'zig' here is $have ($(command -v zig || echo 'not found'))."
+    echo "punk needs Zig $want, but 'zig' here is $have ($(command -v zig || echo 'not found'))."
     echo "See 'Zig' in src/punk/README.md."
     exit 1
 fi
 if ! command -v cargo > /dev/null; then
-    echo "punkroc's cli platform needs Rust (cargo), see https://rustup.rs."
+    echo "punk's cli platform needs Rust (cargo), see https://rustup.rs."
     echo "platforms/cli/host/rust-toolchain.toml says which version."
     exit 1
 fi
@@ -32,10 +32,10 @@ case "$(uname -s)-$(uname -m)" in
     Linux-aarch64 | Linux-arm64) target=arm64musl; triple=aarch64-unknown-linux-musl ;;
     Darwin-x86_64) target=x64mac; triple=x86_64-apple-darwin ;;
     Darwin-arm64) target=arm64mac; triple=aarch64-apple-darwin ;;
-    *) echo "punkroc's platforms don't run on $(uname -s) $(uname -m) yet."; exit 1 ;;
+    *) echo "punk's platforms don't run on $(uname -s) $(uname -m) yet."; exit 1 ;;
 esac
 
-# punkroc's cli platform (Rust, on ambit). Built from its own folder, so that
+# punk's cli platform (Rust, on ambit). Built from its own folder, so that
 # rustup uses the Rust of its rust-toolchain.toml. On Linux the program is
 # static, with the C runtime and unwinder that Rust itself ships for musl.
 mkdir -p "platforms/cli/targets/$target"

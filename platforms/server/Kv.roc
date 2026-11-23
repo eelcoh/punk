@@ -14,7 +14,7 @@ Kv := [].{
     }
 
     ## Stores the value under the key, replacing what was there. The value
-    ## comes first here, so that punkroc writes `Kv.put! key value` (and
+    ## comes first here, so that punk writes `Kv.put! key value` (and
     ## `value |> Kv.put! key`), as `File.write!` of the cli platform.
     put! : Str, Str => Try({}, [KvErr(Str)])
 

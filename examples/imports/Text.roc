@@ -1,4 +1,4 @@
-## A plain Roc module, used from punkroc (app.punk). Its functions take the
+## A plain Roc module, used from punk (app.punk). Its functions take the
 ## value they work on first, as Roc functions do.
 Text := [].{
     ## The string `n` times.

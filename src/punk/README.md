@@ -4,7 +4,7 @@ punk-lang (`punk`, earlier "punkroc") is Roc with an Elm-like, whitespace-based 
 This directory holds the translator from `.punk` to ordinary Roc source.
 
 ```
--- punkroc                              # Roc
+-- punk                                 # Roc
 add = fn a, b ->                        add = |a, b| a + b
     a + b
 total = add 1 (add 2 3)                 total = add(1, add(2, 3))
@@ -20,7 +20,7 @@ type Shape = Circle F64 | Rect F64 F64  Shape := [Circle(F64), Rect(F64, F64)]
 - `mod.zig`: the `punk` compiler module; `toRoc` is what the compiler calls.
 - `translate.zig`: lexer, layout-sensitive parser and Roc emitter.
 - `stdlib.zig`: arity and argument order of the builtins (from `gen_stdlib.py`).
-- `interface.zig`: what punkroc knows about an imported module (step 4).
+- `interface.zig`: what punk knows about an imported module (step 4).
 - `format.zig`: `punk fmt`, the formatter.
 - `main.zig`: the `punk2roc` command line tool.
 - `test.zig`: translation and formatter tests.
@@ -84,7 +84,7 @@ Error messages are about the `.punk` file, not its Roc translation. The
 translator keeps a source map (where each name, literal and operator of the
 translation came from), and every report about a `.punk` file is rewritten
 with it before it is shown (`src/punk/roc/report.zig`): positions and
-source lines come from the `.punk` file, and names are spelled as in punkroc.
+source lines come from the `.punk` file, and names are spelled as in punk.
 Types are written as in punk too (`src/punk/type_text.zig`): Roc's
 `Try(I64, Str)` is `Result Int Str`, `[Just(a), Nothing]` is `Maybe a`, and
 the type variable of a number literal is Elm's `number` instead of a `where`
@@ -99,7 +99,7 @@ x + notDefined
     ^^^^^^^^^^
 ```
 
-A part of the translation that punkroc reordered (`xs |> List.map f` is
+A part of the translation that punk reordered (`xs |> List.map f` is
 `List.map(xs, f)`) is shown as the whole pipeline it came from.
 
 A syntax error in a `.punk` file is reported like the compiler's own errors:
@@ -118,7 +118,7 @@ expected ')' but found 'end of file'
 ## For agents: `punk fmt`, `punk check --json`, `llms.txt`
 
 `zig build` also makes `zig-out/bin/punk`, the same compiler under
-punkroc's name.
+punk's name.
 
 **`punk fmt file.punk ...`** lays `.punk` files out in one canonical form,
 without options, like elm-format: 4 spaces per indentation level, one space
@@ -140,17 +140,17 @@ The golden tests check that every file in `examples/` is formatted.
 
 **`punk check --json file.punk`** writes the problems as one JSON document on
 stdout (`src/punk/roc/json.zig`): per problem the severity, a stable `code`
-(`P101` for a punk rule, `P001` for other punkroc syntax errors,
+(`P101` for a punk rule, `P001` for other punk syntax errors,
 `roc/type-mismatch` for what the type checker finds), the title, the place in
 the `.punk` file (1-based line and column, and where it ends) and the message
 as plain text. `fix` is there for a replacement text, but nothing fills it
 yet. The exit code is 1 when there are errors.
 
-**`llms.txt`** is the reference for an agent that has never seen punkroc:
+**`llms.txt`** is the reference for an agent that has never seen punk:
 the tools, the syntax, the differences from Elm and from Roc, the error
 codes, the platform, the standard library's signatures and a cookbook. The
 signatures are generated from `stdlib.zig`, `elm.zig` and `Builtin.roc` (as
-punkroc sees them: camelCase, the value last, curried), and the cookbook
+punk sees them: camelCase, the value last, curried), and the cookbook
 examples are files in `examples/` that the golden tests run. After a
 change, run `python3 src/punk/gen_llms.py`; the golden tests fail when
 `llms.txt` is out of date.
@@ -167,7 +167,7 @@ zig build-exe src/punk/main.zig -femit-bin=punk2roc
 
 ## Currying and data-last pipes (step 3)
 
-punkroc follows Elm here, on top of Roc's multi-argument functions.
+punk follows Elm here, on top of Roc's multi-argument functions.
 
 **`|>` passes the value last.** `x |> f a` is `f a x`.
 
@@ -177,12 +177,12 @@ end: `List.map f xs`, `Str.splitOn "," text`, `Dict.insert k v dict`.
 Folds take the function first, as Elm's `foldl` (`List.fold f 0 xs`), and so
 does `map2` (`List.map2 f xs ys`). The fold's function gets the state last,
 as in Elm: `List.fold (fn x, total -> total + x) 0 xs` (Roc calls it with
-the state first; punkroc turns the lambda's parameters around, or wraps a
+the state first; punk turns the lambda's parameters around, or wraps a
 named function). `Dict.fold` passes key, value, state. Both orders then fit
 `|>`:
 
 ```
--- punkroc                              # Roc
+-- punk                                 # Roc
 text                                    List.map_try(
     |> Str.trim                             Str.split_on(Str.trim(text), ","),
     |> Str.splitOn ","                      parse_range,
@@ -223,7 +223,7 @@ See `examples/currying.punk`.
 
 ## Folds instead of loops
 
-punkroc has no `var`, `for`, `while` or `return`. A loop is a `fold`, a
+punk has no `var`, `for`, `while` or `return`. A loop is a `fold`, a
 keyword whose parts have names, so there is no argument order to remember:
 
 ```
@@ -249,35 +249,35 @@ are: one line per `!` call.
 
 ## Roc compatibility (step 4)
 
-punkroc and Roc modules can use each other. When a `.punk` file imports a
+punk and Roc modules can use each other. When a `.punk` file imports a
 module, the translator reads that module first (`Foo.roc`, or else
 `Foo.punk`, next to the file; `Platform.Stdout` in the directory of the platform
 the app header names) and learns its functions and their arity.
 
-**punkroc modules from punkroc.** Their functions can be partially applied
+**punk modules from punk.** Their functions can be partially applied
 (`List.map (Math.add 10) xs`), and the `exposing` list counts, as in Elm:
 
 ```
 module Math exposing (add, Shape(..), Color)
 ```
 
-`Math.square` in another punkroc file is then an error ("Math does not
+`Math.square` in another punk file is then an error ("Math does not
 expose square"), and so is `Math.Red` (`Color` is exposed without its tags).
 The module itself must define everything it exposes.
 
-**Roc modules from punkroc.** Their functions get the same treatment as List
+**Roc modules from punk.** Their functions get the same treatment as List
 and Str: Roc's first argument, the value the function works on, comes last.
 `Text.repeat 3 "ab"` is `Text.repeat("ab", 3)`, so `"ab" |> Text.repeat 3`
 works, and so does partial application. Names are written in camelCase
 (`Text.withPrefix` is `with_prefix`). `import Text exposing [repeat]` works
-the same for the unqualified name. punkroc finds the arity in the module's
+the same for the unqualified name. punk finds the arity in the module's
 annotations (`repeat : Str, U64 -> Str`) or lambdas (`|s, n| ...`).
 
-**punkroc modules from Roc.** To Roc, a punkroc module is an ordinary type
+**punk modules from Roc.** To Roc, a punk module is an ordinary type
 module with snake_case names: `Math.sum_of_squares(xs)`. Functions keep the
-argument order they have in punkroc, and curried types are Roc's multi-
+argument order they have in punk, and curried types are Roc's multi-
 argument functions (`add : I64 -> I64 -> I64` is `Math.add(1, 2)`). Roc does
-not check punkroc's `exposing` list: from Roc, everything is visible.
+not check punk's `exposing` list: from Roc, everything is visible.
 
 **Packages given by URL.** Their modules are Roc modules too, and get the
 same treatment: `w: "https://.../Hs2w....tar.zst"` in the app header and
@@ -293,7 +293,7 @@ The switch `rotate_roc_modules` in `translate.zig` turns the reordering for
 Roc modules off.
 
 `examples/imports/` has all three directions: `app.punk` uses the
-punkroc modules `Math` and `Shape`, the Roc module `Text.roc`, and
+punk modules `Math` and `Shape`, the Roc module `Text.roc`, and
 `Report.roc`, a Roc module that uses `Math.punk`.
 
 ## `try` instead of `?`
@@ -303,7 +303,7 @@ so the early exit is visible at the front of the line instead of hidden in a
 trailing `?`:
 
 ```
--- punkroc                              # Roc
+-- punk                                 # Roc
 x = try U64.fromStr a                   x = U64.from_str(a)?
 Ok (try parse a, try parse b)           Ok((parse(a)?, parse(b)?))
 input |> try List.mapTry parseRange     List.map_try(input, parse_range)?
@@ -383,7 +383,7 @@ so `a + b` still crashes on overflow, as in Roc.
 
 ## A platform of its own
 
-`platforms/cli` is punkroc's platform for command-line programs: `Stdout`,
+`platforms/cli` is punk's platform for command-line programs: `Stdout`,
 `Stderr`, `Stdin.line!` and `Stdin.readAll!`, `File.read!` and
 `File.write!` (only for files named on the command line), `Arg.list!`,
 `Clock` and `Random`. Its host is Rust, on ambit's cli platform. See

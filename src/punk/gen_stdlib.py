@@ -43,7 +43,7 @@ def arity(sig):
 def state_first_callback(sig):
     """For a fold `List(a), state, (state, a -> state) -> state`: the number of
     parameters of the callback when it takes the state first (Roc), else 0.
-    punkroc passes the state last, as Elm's foldl."""
+    punk passes the state last, as Elm's foldl."""
     parts, depth, cur = [], 0, ""
     for c in sig:
         if c in "([{":

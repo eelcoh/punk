@@ -1,4 +1,4 @@
-//! A Postgres database for punkroc's server platform: a pool of connections that is a
+//! A Postgres database for punk's server platform: a pool of connections that is a
 //! [`punk_server::Database`]. The wiring of an app makes one and hands it to the app with
 //! [`punk_server::App::with_database`]; the app never sees the connection string.
 //!

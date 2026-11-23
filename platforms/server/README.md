@@ -1,4 +1,4 @@
-# punkroc's server platform
+# punk's server platform
 
 The platform for punk HTTP servers. Its host is written in Rust, on
 [ambit](https://github.com/eelcoh/ambit)'s `server` platform and capabilities:

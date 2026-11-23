@@ -2,7 +2,7 @@ app [main!] { Platform: platform "cli" }
 
 import Platform.Stdout
 
-{-| Currying and data-last pipes in punkroc. -}
+{-| Currying and data-last pipes in punk. -}
 
 add : I64 -> I64 -> I64
 add = fn a, b ->

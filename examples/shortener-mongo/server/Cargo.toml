@@ -1,6 +1,6 @@
 [package]
 name = "punk-shortener-mongo"
-description = "ambit's link shortener in punk (../Shortener.punk), with its links in Mongo, on punkroc's server platform."
+description = "ambit's link shortener in punk (../Shortener.punk), with its links in Mongo, on punk's server platform."
 version = "0.1.0"
 edition = "2024"
 publish = false

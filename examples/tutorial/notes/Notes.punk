@@ -164,4 +164,24 @@ json = fn status, value ->
 problemJson : U16 -> Str -> Response
 problemJson = fn status, message ->
     json status (E.object [("error", E.string message)])
+
 -- ANCHOR_END: helpers
+
+-- ANCHOR: tests
+-- Tests next to the code: `punk test Notes.punk` runs them.
+expect
+    decodeBody newNote (Str.toUtf8 "{\"title\": \"Milk\", \"body\": \"2 litres\"}")
+        == Ok { title = "Milk", body = "2 litres" }
+
+expect
+    decodeBody newNote (Str.toUtf8 "{\"title\": \"Milk\"}")
+        == Err "the value: Expecting an OBJECT with a field named `body`, but got {\"title\":\"Milk\"}"
+
+expect
+    E.encode
+        0
+        (encodeNote
+            { id = "n1", title = "Milk", body = "2 litres", created = 0 }
+        )
+        == "{\"id\":\"n1\",\"title\":\"Milk\",\"body\":\"2 litres\",\"created\":0}"
+-- ANCHOR_END: tests

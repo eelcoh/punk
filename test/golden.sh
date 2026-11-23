@@ -95,6 +95,16 @@ for f in $server_apps; do
         echo "FAIL check $f"
         sed 's/^/     /' "$work/check" | tail -n 30
         failed=$((failed + 1))
+    fi    # Its top-level `expect`s do run: they are pure.
+    if grep -q '^expect' "examples/$f"; then
+        if "$roc" test "examples/$f" > "$work/test" 2>&1; then
+            echo "ok   test $f"
+            passed=$((passed + 1))
+        else
+            echo "FAIL test $f"
+            sed 's/^/     /' "$work/test" | tail -n 30
+            failed=$((failed + 1))
+        fi
     fi
 done
 

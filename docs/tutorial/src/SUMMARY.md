@@ -10,3 +10,7 @@
 - [A migration](migration.md)
 - [In a container](container.md)
 - [Next steps](next.md)
+
+# About punk-lang
+
+- [How punk is built](architecture.md)

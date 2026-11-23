@@ -1,6 +1,6 @@
 [package]
 name = "punk-server-postgres"
-description = "A Postgres database for punkroc's server platform: a pool of connections as a punk-server Database."
+description = "A Postgres database for punk's server platform: a pool of connections as a punk-server Database."
 version = "0.1.0"
 edition = "2024"
 publish = false

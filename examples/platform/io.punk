@@ -5,7 +5,7 @@ import Platform.Stdin
 import Platform.File
 import Platform.Arg
 
-{-| punkroc's platform: the command line, files and standard input. -}
+{-| punk's platform: the command line, files and standard input. -}
 
 main! = fn () ->
     case Arg.list! () of

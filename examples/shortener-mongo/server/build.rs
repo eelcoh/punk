@@ -1,4 +1,4 @@
-//! Compiles the punk app (`../Shortener.punk`) with punkroc's compiler into `libapp.a`, and
+//! Compiles the punk app (`../Shortener.punk`) with punk's compiler into `libapp.a`, and
 //! links it into this crate. The compiler is `zig-out/bin/punk` of this repository (run
 //! `zig build` first), or the one in the `PUNK` environment variable.
 
@@ -36,7 +36,7 @@ fn main() {
         "aarch64-unknown-linux-musl" => "arm64musl",
         "x86_64-apple-darwin" => "x64mac",
         "aarch64-apple-darwin" => "arm64mac",
-        other => panic!("punkroc's server platform has no target for {other} yet"),
+        other => panic!("punk's server platform has no target for {other} yet"),
     };
     let archive = out.join("libapp.a");
     let status = Command::new(&punk)

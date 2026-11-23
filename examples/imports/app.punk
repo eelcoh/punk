@@ -13,7 +13,7 @@ main! = fn () ->
         |> List.map Shape.describe
         |> List.forEach! Stdout.line!
 
-    -- Partial application of a function from another punkroc module.
+    -- Partial application of a function from another punk module.
     [1, 2, 3]
         |> List.map (Math.add 10)
         |> List.map I64.toStr
@@ -26,5 +26,5 @@ main! = fn () ->
         |> Text.withPrefix "> "
         |> Stdout.line!
 
-    -- A Roc module that uses a punkroc module.
+    -- A Roc module that uses a punk module.
     Stdout.line! (Report.summary [1, 2, 3])

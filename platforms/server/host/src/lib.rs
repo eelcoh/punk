@@ -1,4 +1,4 @@
-//! Host of punkroc's `server` platform.
+//! Host of punk's `server` platform.
 //!
 //! roc compiles a punk server app to an archive (`libapp.a`) that does no I/O itself: for each
 //! request ambit's server platform calls [`App::handle`], which calls the app's `roc_handle`

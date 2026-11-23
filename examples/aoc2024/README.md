@@ -1,15 +1,15 @@
-# Advent of Code 2024 in punkroc
+# Advent of Code 2024 in punk
 
 Days 1 to 7, 10 and 11, each on the example input from the puzzle text, in the
 functional style (pipelines, recursion, no `var`). `Grid.punk` is a small
-punkroc module that days 4 and 6 share.
+punk module that days 4 and 6 share.
 
 ```
 zig build
 zig-out/bin/punk examples/aoc2024/Day06.punk
 ```
 
-Day 1 runs on punkroc's own platform (`test/`), which can read files:
+Day 1 runs on punk's own platform (`test/`), which can read files:
 `zig-out/bin/punk examples/aoc2024/Day01.punk input.txt` solves your own
 puzzle input (run `sh test/setup.sh` once first).
 

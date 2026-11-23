@@ -1,6 +1,6 @@
 [package]
 name = "punk-shortener"
-description = "ambit's link shortener, written in punk (../Shortener.punk), on punkroc's server platform."
+description = "ambit's link shortener, written in punk (../Shortener.punk), on punk's server platform."
 version = "0.1.0"
 edition = "2024"
 publish = false

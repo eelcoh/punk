@@ -1,4 +1,4 @@
-//! Compiles the punk app (`../Counter.punk`) with punkroc's compiler into `libapp.a`, and
+//! Compiles the punk app (`../Counter.punk`) with punk's compiler into `libapp.a`, and
 //! links it into this crate. The compiler is `zig-out/bin/punk` of this repository (run
 //! `zig build` first), or the one in the `PUNK` environment variable.
 
@@ -37,7 +37,7 @@ fn main() {
         "x86_64-apple-darwin" => "x64mac",
         "aarch64-apple-darwin" => "arm64mac",
         // Freestanding ELF at the baseline CPU level: Hermit's QEMU CPU model has no AVX.
-        other => panic!("punkroc's tui platform has no target for {other} yet"),
+        other => panic!("punk's tui platform has no target for {other} yet"),
     };
     let archive = out.join("libapp.a");
     let status = Command::new(&punk)

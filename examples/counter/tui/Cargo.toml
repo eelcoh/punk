@@ -1,6 +1,6 @@
 [package]
 name = "punk-counter"
-description = "A small punk terminal app (../Counter.punk) on punkroc's tui platform: the platform's own example."
+description = "A small punk terminal app (../Counter.punk) on punk's tui platform: the platform's own example."
 version = "0.1.0"
 edition = "2024"
 publish = false

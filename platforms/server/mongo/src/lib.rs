@@ -1,4 +1,4 @@
-//! A Mongo database for punkroc's server platform: the official Mongo driver as a
+//! A Mongo database for punk's server platform: the official Mongo driver as a
 //! [`punk_server::Documents`]. The wiring of an app makes one, says which collections the app
 //! may read and which it may change, and hands it to the app with
 //! [`punk_server::App::with_documents`]; the app never sees the connection string.

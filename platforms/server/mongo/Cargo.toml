@@ -1,6 +1,6 @@
 [package]
 name = "punk-server-mongo"
-description = "A Mongo database for punkroc's server platform: the official driver as a punk-server Documents, limited to the collections the wiring allows."
+description = "A Mongo database for punk's server platform: the official driver as a punk-server Documents, limited to the collections the wiring allows."
 version = "0.1.0"
 edition = "2024"
 publish = false

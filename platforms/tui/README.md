@@ -1,4 +1,4 @@
-# punkroc's tui platform
+# punk's tui platform
 
 The platform for punk terminal apps. Its host is written in Rust, on
 [ambit](https://github.com/eelcoh/ambit)'s `tui` platform: ambit owns the

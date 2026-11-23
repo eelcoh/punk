@@ -1034,7 +1034,7 @@ pub const Parser = struct {
     fn parseStmtKind(p: *Parser) Error!@FieldType(Stmt, "kind") {
         const t = p.tok();
         switch (t.tag) {
-            .kw_var, .kw_for, .kw_while => return p.errAt(t, "punkroc has no '{s}': use 'fold x in xs into total = 0' or a recursive function", .{t.text}),
+            .kw_var, .kw_for, .kw_while => return p.errAt(t, "punk has no '{s}': use 'fold x in xs into total = 0' or a recursive function", .{t.text}),
             .kw_expect => {
                 _ = p.advance();
                 return .{ .expect = try p.parseTest() };
@@ -1146,7 +1146,7 @@ pub const Parser = struct {
             .kw_if => return p.parseIf(),
             .kw_case => return p.parseCase(),
             .kw_fold => return p.parseFold(),
-            .kw_return => return p.errAt(t, "punkroc has no 'return': the last line of a body is its value", .{}),
+            .kw_return => return p.errAt(t, "punk has no 'return': the last line of a body is its value", .{}),
             .kw_crash, .kw_dbg => {
                 if (p.test_depth == 0) {
                     if (t.tag == .kw_crash) return failRule(p.a, p.diag, t.line, t.col, .crash_outside_test, "'crash' is only allowed inside an 'expect' test. " ++
@@ -1204,7 +1204,7 @@ pub const Parser = struct {
             }
         }
         if (p.at(.question)) {
-            return p.errAt(p.tok(), "punkroc uses 'try f x' instead of 'f x?': put 'try' in front of the call that can fail", .{});
+            return p.errAt(p.tok(), "punk uses 'try f x' instead of 'f x?': put 'try' in front of the call that can fail", .{});
         }
         return e;
     }
@@ -1329,7 +1329,7 @@ pub const Parser = struct {
                 _ = p.advance();
                 value = try p.parseExpr();
             } else if (p.at(.colon)) {
-                return p.errAt(p.tok(), "record fields use '=' in punkroc, like {{ {s} = ... }}", .{name});
+                return p.errAt(p.tok(), "record fields use '=' in punk, like {{ {s} = ... }}", .{name});
             }
             try fields.append(p.a, .{ .name = name, .value = value });
             if (!p.at(.comma)) break;

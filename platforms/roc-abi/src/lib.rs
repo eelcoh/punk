@@ -1,5 +1,5 @@
 //! Roc's values as a compiled punk app lays them out, and the memory they live in. Shared by
-//! the hosts of punkroc's platforms (`platforms/cli/host`, `platforms/server/host`).
+//! the hosts of punk's platforms (`platforms/cli/host`, `platforms/server/host`).
 //!
 //! This is the only crate that reads raw memory. It mirrors `src/builtins/str.zig`, `list.zig`
 //! and `utils.zig` of the compiler (64-bit, little-endian targets only); when an upstream merge

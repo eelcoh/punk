@@ -2,7 +2,7 @@ app [main!] { Platform: platform "cli" }
 
 import Platform.Stdout
 
-{-| Elm's names in punkroc: List, Tuple, Maybe, String, compare and Int. -}
+{-| Elm's names in punk: List, Tuple, Maybe, String, compare and Int. -}
 
 main! = fn () ->
     Stdout.line! "range: ${Str.inspect (List.range 1 5)}"

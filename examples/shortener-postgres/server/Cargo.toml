@@ -1,6 +1,6 @@
 [package]
 name = "punk-shortener-postgres"
-description = "ambit's link shortener in punk (../Shortener.punk), with its links in Postgres, on punkroc's server platform."
+description = "ambit's link shortener in punk (../Shortener.punk), with its links in Postgres, on punk's server platform."
 version = "0.1.0"
 edition = "2024"
 publish = false

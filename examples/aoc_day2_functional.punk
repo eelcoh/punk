@@ -2,7 +2,7 @@ app [main!] { Platform: platform "cli" }
 
 import Platform.Stdout
 
-{-| Advent of Code 2025, day 2, in a functional punkroc style.
+{-| Advent of Code 2025, day 2, in a functional punk style.
 Same answers as test/fx/aoc_day2.roc, without var, for or while.
 
 Builtins take the value they work on last, as in Elm, so `|>` and

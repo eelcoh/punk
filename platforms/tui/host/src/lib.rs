@@ -1,4 +1,4 @@
-//! Host of punkroc's `tui` platform.
+//! Host of punk's `tui` platform.
 //!
 //! roc compiles a punk terminal app to an archive (`libapp.a`) that does no I/O itself. [`App`]
 //! is an ambit tui [`ambit_tui::App`]: ambit's platform owns the terminal, the event loop and

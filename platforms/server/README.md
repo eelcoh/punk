@@ -182,6 +182,28 @@ findLink = fn id ->
   that owns them) and lets the app's role use them with `Owner::grant`;
   `examples/notes` shows it, and `punk_server_postgres::testing` sets
   up both roles for tests.
+- **Tables in a module of their own.** A module can declare tables and
+  expose them like values; a module that imports it starts queries from
+  them as from its own:
+
+  ```
+  module Tables exposing (UserId(..), Note, notes)
+
+  table notes : Note
+      ...
+
+  -- in the app
+  import Tables exposing (UserId(..), Note, notes)
+
+  readable = notes |> Db.all          -- or Tables.notes
+  ```
+
+  The app's `schema.sql` holds every table of the program: its own and
+  those of the modules it imports, at any depth. So the app checks them
+  (P405) and `punk check --schema app.punk` writes their versions; a
+  `migrate` stays next to the table it migrates, in the module, and an
+  error about it points at the import. `examples/notes` keeps its tables in
+  `Tables.punk`.
 - **The schema comes from the program, with verified migrations.**
   `schema.sql` next to the app is a history of versions, which `punk check
   --schema app.punk` writes (`Str` is `text`, `Int` `bigint`, `Float`
@@ -591,8 +613,8 @@ shortener checks it too).
 
 ## Not there yet
 
-- The query language: grouping a join, filtering groups (`HAVING`), tables shared
-  between modules, removing or renaming a whole table in a migration.
+- The query language: grouping a join, filtering groups (`HAVING`), removing
+  or renaming a whole table in a migration.
 - On hermit: `sslrootcert` (a unikernel has no files) and a test of host
   names (DNS); see `hermit/README.md`. Certificates for the app itself
   (`sslcert`, `tlsCertificateKeyFile`).

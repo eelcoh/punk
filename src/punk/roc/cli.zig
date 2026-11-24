@@ -34,7 +34,10 @@ pub fn format(gpa: Allocator, io: std.Io, stdout: *Writer, stderr: *Writer, path
             continue;
         };
         var diag: punk.Diagnostic = .{};
-        const out = punk.format.format(arena, src, &diag) catch |err| switch (err) {
+        // The modules the file imports are read too, for the tables they bring.
+        var disk: Disk = .{ .io = io };
+        const resolver = try punk.resolverFor(arena, path, .{ .ctx = &disk, .read = Disk.read });
+        const out = punk.format.formatWith(arena, src, &diag, resolver) catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
             error.ParseError, error.Unsafe => {
                 try stderr.print("{s}:{d}:{d}: {s}\n", .{ path, diag.line, diag.col, diag.message });
@@ -63,6 +66,16 @@ pub fn format(gpa: Allocator, io: std.Io, stdout: *Writer, stderr: *Writer, path
     if (failed > 0 or unformatted > 0) return error.Failed;
 }
 
+/// Reads the files the translator asks for from disk.
+const Disk = struct {
+    io: std.Io,
+
+    fn read(ctx: ?*anyopaque, allocator: Allocator, path: []const u8) ?[]u8 {
+        const disk: *const Disk = @ptrCast(@alignCast(ctx.?));
+        return std.Io.Dir.cwd().readFileAlloc(disk.io, path, allocator, .limited(256 * 1024 * 1024)) catch null;
+    }
+};
+
 /// `punk check --schema app.punk`: brings the `schema.sql` next to the app
 /// up to date with the tables it declares, adding a version when they
 /// changed (src/punk/migrate.zig), and says what the new version does.
@@ -84,7 +97,10 @@ pub fn checkSchema(gpa: Allocator, io: std.Io, stdout: *Writer, stderr: *Writer,
         },
     };
     var diag: punk.Diagnostic = .{};
-    const result = punk.schema(arena, src, existing, &diag) catch |err| switch (err) {
+    // The modules the app imports are read from disk, for their tables.
+    var disk: Disk = .{ .io = io };
+    const reader: punk.Reader = .{ .ctx = &disk, .read = Disk.read };
+    const result = punk.schemaAt(arena, path, src, existing, &diag, reader) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         error.ParseError => {
             try stderr.print("{s}:{d}:{d}: {s}\n", .{ path, diag.line, diag.col, diag.message });

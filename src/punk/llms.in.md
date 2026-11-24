@@ -546,6 +546,14 @@ the columns, the fields of the user and constants. The app's database role
 must keep to row-level security: the host refuses a superuser or a role with
 `BYPASSRLS`.
 
+A module can declare tables and expose them (`module Tables exposing
+(Note, notes)`); a module that imports them (`import Tables exposing (notes)`)
+starts queries from `notes` or `Tables.notes`. The app's `schema.sql` holds
+every table of the program, also those of the modules it imports, and a
+`migrate` stays in the module next to its table. A tag of another module's
+type is written `Tables.UserId` (or `UserId` when the import exposes
+`UserId(..)`).
+
 When a table changes, the program doesn't compile (P405) until `punk check
 --schema` has added a version to `schema.sql`. A new table, a new `Maybe`
 column and a new policy need nothing more; any other change needs a

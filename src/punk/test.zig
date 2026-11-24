@@ -832,6 +832,56 @@ const files = Files{ .entries = &.{
         \\}
     },
     .{
+        "app/Tables.punk",
+        \\module Tables exposing (Link, LinkId(..), links)
+        \\
+        \\type LinkId
+        \\    = LinkId Str
+        \\
+        \\type alias Link =
+        \\    { id : LinkId
+        \\    , url : Str
+        \\    , owner : Str
+        \\    }
+        \\
+        \\type alias User =
+        \\    { id : Str
+        \\    , name : Str
+        \\    }
+        \\
+        \\table links : Link
+        \\    key id
+        \\    read fn user, link -> link.owner == user.name
+        \\    insert everyone
+        \\    update everyone
+        \\    delete nobody
+        \\
+        \\table users : User
+        \\    key id
+        \\    read everyone
+        \\    insert everyone
+        \\    update nobody
+        \\    delete nobody
+    },
+    .{
+        "app/Clicks.punk",
+        \\module Clicks exposing (clicks)
+        \\
+        \\import Tables
+        \\
+        \\type alias Click =
+        \\    { id : Int
+        \\    , link : Str
+        \\    }
+        \\
+        \\table clicks : Click
+        \\    key id
+        \\    read everyone
+        \\    insert everyone
+        \\    update nobody
+        \\    delete nobody
+    },
+    .{
         "cache/AbC123/Wrap.roc",
         \\Wrap := [].{
         \\    surround : Str, Str, Str -> Str
@@ -1008,8 +1058,64 @@ test "modules: the exposing list is checked" {
     try checkWithError("module M exposing (foo)\n\nbar = 1\n", 1, "does not define it");
     try checkWithError("module M exposing (Foo(..))\n\nbar = 1\n", 1, "does not define it");
     // Exposed tags and Roc modules are fine.
-    try checkWith("import Math\n\nx = Math.Circle 1.0\n", "import Math\n\nx = Math.Circle(1.0)\n");
+    // A tag of another module's type is module, type and tag in Roc.
+    try checkWith("import Math\n\nx = Math.Circle 1.0\n", "import Math\n\nx = Math.Shape.Circle(1.0)\n");
     try checkWith("import Text\n\nx = Text.whatever 1\n", "import Text\n\nx = Text.whatever(1)\n");
+}
+
+test "modules: tables shared between modules" {
+    const src =
+        \\app [main!] { pf: platform "p.roc" }
+        \\
+        \\import pf.Db
+        \\import pf.Sql
+        \\import Tables exposing (Link, LinkId(..), links)
+        \\import Clicks
+        \\
+        \\find = fn id -> links |> Db.filter (fn l -> l.id == id) |> Db.first
+        \\all = Tables.links |> Db.all
+        \\byClicks = Clicks.clicks |> Db.all
+        \\mine = fn u -> Db.runAs! u (links |> Db.all)
+        \\raw = Sql.query "SELECT url FROM links JOIN clicks ON clicks.link = links.url" []
+        \\
+    ;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const reader = mod.Reader{ .ctx = @ptrCast(@constCast(&files)), .read = Files.read };
+    // The app's schema.sql holds the tables of the whole program: those of
+    // the modules it imports, and of theirs.
+    var diag: punk.Diagnostic = .{};
+    const schema = (try mod.schemaAt(a, "app/main.punk", src, null, &diag, reader)).sql;
+    const with_schema = Files{ .entries = try std.mem.concat(a, [2][]const u8, &.{ files.entries, &.{.{ "app/schema.sql", schema }} }) };
+    const out = try mod.toRocWith(a, "app/main.punk", src, .{ .ctx = @ptrCast(@constCast(&with_schema)), .read = Files.read });
+    const has = struct {
+        fn f(o: []const u8, part: []const u8) !void {
+            if (std.mem.find(u8, o, part) == null) {
+                std.debug.print("missing:\n{s}\nin:\n{s}\n", .{ part, o });
+                return error.TestUnexpectedResult;
+            }
+        }
+    }.f;
+    // A table is not a value of the module in Roc, so it isn't imported.
+    try has(out, "import Tables exposing [Link, LinkId]\n");
+    // The id is the module's type: `Tables.LinkId.LinkId` in Roc.
+    try has(out, "find = |id| Db.first_row([Db.param_text(match id { Tables.LinkId.LinkId(punk_w) => punk_w })], \"SELECT id, url, owner FROM links WHERE id = $1 LIMIT 1\"");
+    try has(out, "Db.read_wrap(Db.read_text, |punk_w| Tables.LinkId.LinkId(punk_w))");
+    try has(out, "all = Db.all_rows([], \"SELECT id, url, owner FROM links\"");
+    try has(out, "\"SELECT id, link FROM clicks\"");
+    // The policy of the module's table looks at the user's name.
+    try has(out, "Db.run_as!([Db.setting_text(\"punk.user_name\", punk_user9.name)]");
+
+    try has(schema, "-- table links : id Str key, url Str, owner Str\n");
+    try has(schema, "-- table users : id Str key, name Str\n");
+    try has(schema, "-- table clicks : id Int key, link Str\n");
+    try has(schema, "CREATE TABLE clicks (");
+
+    // Only what the module exposes, and one table of a name.
+    try checkWithError("app [main!] { pf: platform \"p.roc\" }\n\nimport pf.Db\nimport Tables exposing (users)\n", 4, "Tables does not expose users");
+    try checkWithError("app [main!] { pf: platform \"p.roc\" }\n\nimport pf.Db\nimport Tables\n\nq = Tables.users |> Db.all\n", 6, "users");
+    try checkWithError("app [main!] { pf: platform \"p.roc\" }\n\nimport pf.Db\nimport Tables\n\ntype alias L =\n    { id : Str\n    }\n\ntable links : L\n    key id\n    read everyone\n    insert everyone\n    update everyone\n    delete everyone\n", 4, "there is already a table 'links'");
 }
 
 test "modules: scanning a Roc module" {

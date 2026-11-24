@@ -14,7 +14,9 @@ example of the tutorial page "A JSON API with Postgres"
 (docs/tutorial/src/json-api.md).
 
 - `GET /todos`: all todos, as a JSON array, by title.
-- `POST /todos` with `{"title": "..."}`: a new todo, 201 with the todo.
+- `POST /todos` with `{"title": "..."}`: a new todo, 201 with the todo. It
+  may have an `estimate` in hours (an exact decimal number, `1.25`) and
+  `details`, any JSON the client wants to keep with it.
 - `GET /todos/<id>`: one todo, 404 if there is none.
 - `PUT /todos/<id>` with `{"title": "...", "done": true}`: changes it.
 - `DELETE /todos/<id>`: removes it, 204.
@@ -32,6 +34,8 @@ type alias Todo =
     { id : Str
     , title : Str
     , done : Bool
+    , estimate : Maybe Dec
+    , details : Maybe Value
     }
 
 -- The todos, one row each. This API has no users: everyone may do
@@ -42,6 +46,10 @@ table todos : Todo
     insert everyone
     update everyone
     delete everyone
+
+-- In version 2 of schema.sql the todos got `estimate` (numeric) and
+-- `details` (jsonb). Both are a Maybe, so the todos there were get
+-- Nothing, and the version needed no migrate.
 
 -- ANCHOR_END: table
 
@@ -80,9 +88,18 @@ type alias Change =
     , done : Bool
     }
 
-newTitle : D.Decoder Str
-newTitle =
-    D.field "title" D.string
+type alias NewTodo =
+    { title : Str
+    , estimate : Maybe Dec
+    , details : Maybe Value
+    }
+
+newTodo : D.Decoder NewTodo
+newTodo =
+    D.map3 (fn title, estimate, details -> { title, estimate, details })
+        (D.field "title" D.string)
+        (D.maybe (D.field "estimate" D.dec))
+        (D.maybe (D.field "details" D.value))
 
 change : D.Decoder Change
 change =
@@ -97,6 +114,8 @@ encodeTodo = fn todo ->
         [ ("id", E.string todo.id)
         , ("title", E.string todo.title)
         , ("done", E.bool todo.done)
+        , ("estimate", Maybe.withDefault E.null (Maybe.map E.dec todo.estimate))
+        , ("details", Maybe.withDefault E.null todo.details)
         ]
 
 -- ANCHOR_END: json
@@ -158,10 +177,16 @@ list! = fn () ->
 
 create! : List U8 => Result Response _
 create! = fn body ->
-    case decodeBody newTitle body of
+    case decodeBody newTodo body of
         Err problem -> Ok (problemJson 400 problem)
-        Ok title ->
-            todo = { id = "t${U64.toStr (Random.u64! ())}", title, done = False }
+        Ok new ->
+            todo =
+                { id = "t${U64.toStr (Random.u64! ())}"
+                , title = new.title
+                , done = False
+                , estimate = new.estimate
+                , details = new.details
+                }
             _ = try Db.run! (Db.insert todo todos)
             Ok (json 201 (encodeTodo todo))
 
@@ -176,12 +201,8 @@ update! = fn id, body ->
     case decodeBody change body of
         Err problem -> Ok (problemJson 400 problem)
         Ok c ->
-            count = try Db.run! (changeTodo id c)
-            if count == 0 then
-                Ok (problemJson 404 "no todo ${id}")
-            else
-                todo = { id, title = c.title, done = c.done }
-                Ok (json 200 (encodeTodo todo))
+            _ = try Db.run! (changeTodo id c)
+            show! id
 
 remove! : Str => Result Response _
 remove! = fn id ->

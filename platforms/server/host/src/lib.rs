@@ -14,7 +14,9 @@ use std::cell::{Cell, RefCell};
 use std::time::UNIX_EPOCH;
 
 mod database;
-pub use database::{Database, DbError, Rows, Transaction, Value};
+pub use database::{
+    Database, DbError, Rows, Transaction, Value, is_decimal, parse_uuid, uuid_text,
+};
 pub mod documents;
 pub use documents::{Change, Comparison, Doc, Documents, Filter, Order, Search};
 

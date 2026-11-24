@@ -30,8 +30,8 @@ encodeLink = fn l ->
 | Module | What |
 |--------|------|
 | `Value` | the type `Value` (`JNull`, `JBool`, `JNumber Str`, `JString`, `JArray`, `JObject`), `Value.parse : Str -> Result Value Str`, `Value.encode : Int -> Value -> Str` |
-| `Decode` | `Decoder a`, `Error`, `decodeString`, `decodeValue`, `errorToString`; `string int float bool null value`; `list keyValuePairs field at index maybe nullable oneOf`; `succeed fail map map2 ... map5 andThen` |
-| `Encode` | `encode`, `string int float bool null list object dict` |
+| `Decode` | `Decoder a`, `Error`, `decodeString`, `decodeValue`, `errorToString`; `string int float dec bool null value`; `list keyValuePairs field at index maybe nullable oneOf`; `succeed fail map map2 ... map5 andThen` |
+| `Encode` | `encode`, `string int float dec bool null list object dict` |
 
 Differences from Elm:
 
@@ -41,7 +41,8 @@ Differences from Elm:
   `D.succeed f |> D.andMap ...` doesn't type. Use `map2` to `map5`, nest them,
   or `andThen` for more fields.
 - A number keeps its text (`JNumber "2.5e3"`): `D.int` reads it as a 64-bit
-  integer, `D.float` as an `F64`, so a large integer is never rounded.
+  integer, `D.float` as an `F64` and `D.dec` as an exact `Dec` (`12.50`), so a
+  large integer or an amount of money is never rounded.
 - `Encode.float` gives `null` for NaN and the infinities, as Elm does.
 
 The parser is strict JSON (RFC 8259): no comments, no trailing commas, no

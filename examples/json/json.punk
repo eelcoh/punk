@@ -157,3 +157,9 @@ expect Result.toMaybe (D.decodeString (D.list D.int) "[1, 2, 3]") == Just
     ]
 
 expect E.encode 0 (E.float 1.5) == "1.5"
+
+expect Result.toMaybe (D.decodeString D.dec "12.50") == Just 12.5
+
+expect Result.isErr (D.decodeString D.dec "\"12.50\"")
+
+expect E.encode 0 (E.dec 0.1) == "0.1"

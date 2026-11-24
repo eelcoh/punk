@@ -50,7 +50,7 @@ fn create(app: &impl Handler, title: &str) -> String {
     let id = id_of(&body);
     assert_eq!(
         body,
-        format!(r#"{{"id":"{id}","title":"{title}","done":false}}"#)
+        format!(r#"{{"id":"{id}","title":"{title}","done":false,"estimate":null,"details":null}}"#)
     );
     id
 }
@@ -65,7 +65,9 @@ fn a_new_todo_can_be_read_back() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
         body,
-        format!(r#"{{"id":"{id}","title":"buy milk","done":false}}"#)
+        format!(
+            r#"{{"id":"{id}","title":"buy milk","done":false,"estimate":null,"details":null}}"#
+        )
     );
 }
 
@@ -83,7 +85,7 @@ fn the_list_is_a_json_array_by_title() {
     assert_eq!(
         body,
         format!(
-            r#"[{{"id":"{milk}","title":"buy milk","done":false}},{{"id":"{walk}","title":"walk the dog","done":false}}]"#
+            r#"[{{"id":"{milk}","title":"buy milk","done":false,"estimate":null,"details":null}},{{"id":"{walk}","title":"walk the dog","done":false,"estimate":null,"details":null}}]"#
         )
     );
 }
@@ -103,12 +105,16 @@ fn a_todo_can_be_changed() {
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(
         body,
-        format!(r#"{{"id":"{id}","title":"buy oat milk","done":true}}"#)
+        format!(
+            r#"{{"id":"{id}","title":"buy oat milk","done":true,"estimate":null,"details":null}}"#
+        )
     );
     let (_, _, body) = send(&app, "GET", &format!("/todos/{id}"), "");
     assert_eq!(
         body,
-        format!(r#"{{"id":"{id}","title":"buy oat milk","done":true}}"#)
+        format!(
+            r#"{{"id":"{id}","title":"buy oat milk","done":true,"estimate":null,"details":null}}"#
+        )
     );
 }
 
@@ -153,4 +159,29 @@ fn unknown_routes_are_404() {
         assert_eq!(status, StatusCode::NOT_FOUND, "{method} {uri}");
         assert_eq!(body, r#"{"error":"not found"}"#);
     }
+}
+
+// A `Dec` comes back as the same number, and the details as the same JSON. Postgres keeps
+// `jsonb` in its own key order (shorter keys first), not in the order they were written.
+#[test]
+fn an_estimate_and_details_are_kept() {
+    let Some((app, _owner)) = setup("extra") else {
+        return;
+    };
+    let (status, _, body) = send(
+        &app,
+        "POST",
+        "/todos",
+        r#"{"title": "paint the shed", "estimate": 2.50, "details": {"colour": "green", "coats": [1, 2]}}"#,
+    );
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let id = id_of(&body);
+    let (status, _, body) = send(&app, "GET", &format!("/todos/{id}"), "");
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        body,
+        format!(
+            r#"{{"id":"{id}","title":"paint the shed","done":false,"estimate":2.5,"details":{{"coats":[1,2],"colour":"green"}}}}"#
+        )
+    );
 }

@@ -15,8 +15,8 @@ import Uuid
 ## works on comes first. punk passes it last.)
 Row := [].{
     ## One value of a row as the host gives it. `kind` is 0 for NULL, 1 text,
-    ## 2 int, 3 float, 4 bool, 5 a time (milliseconds since 1970) and 6 a
-    ## UUID; `text` is the value written as text.
+    ## 2 int, 3 float, 4 bool, 5 a time (milliseconds since 1970), 6 a UUID,
+    ## 7 JSON and 8 a decimal number; `text` is the value written as text.
     Cell : { kind : U8, text : Str }
 
     ## Turns a row (the names of its columns and its cells) into an `a`, or
@@ -116,6 +116,36 @@ Row := [].{
         },
     }
 
+    ## A column of type `jsonb` or `json`, as its text.
+    json : Column(Str)
+    json = {
+        read: |cell| match cell.kind {
+            7 => Ok(cell.text)
+            k => Err("expected JSON, got ${kind_name(k)}")
+        },
+    }
+
+    ## A column of type `numeric`, as a `Dec` (18 digits after the point).
+    dec : Column(Dec)
+    dec = {
+        read: |cell| match cell.kind {
+            8 => match Dec.from_str(cell.text) {
+                Ok(x) => Ok(x)
+                Err(_) => Err("${cell.text} doesn't fit a Dec")
+            }
+            k => Err("expected a numeric, got ${kind_name(k)}")
+        },
+    }
+
+    ## A column read through a function that can fail: `Row.tryColumn Value.parse Row.json`.
+    try_column : Column(a), (a -> Try(b, Str)) -> Column(b)
+    try_column = |column, f| {
+        read: |cell| match (column.read)(cell) {
+            Ok(value) => f(value)
+            Err(problem) => Err(problem)
+        },
+    }
+
     ## A column read as another type: `Row.mapColumn LinkId Row.text`.
     map_column : Column(a), (a -> b) -> Column(b)
     map_column = |column, f| {
@@ -147,6 +177,8 @@ Row := [].{
         4 => "a bool"
         5 => "a time"
         6 => "a UUID"
+        7 => "JSON"
+        8 => "a numeric"
         _ => "a value of an unknown kind"
     }
 

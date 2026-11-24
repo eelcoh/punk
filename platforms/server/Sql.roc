@@ -12,7 +12,8 @@ Sql := [].{
     Query :: { sql : Str, params : List(Param) }
 
     ## The value of one parameter. `kind` is 0 for NULL, 1 text, 2 int, 3 float,
-    ## 4 bool, 5 a time (milliseconds since 1970) and 6 a UUID; `text` is the value written as text. The host turns it into
+    ## 4 bool, 5 a time (milliseconds since 1970), 6 a UUID, 7 JSON and 8 a
+    ## decimal number; `text` is the value written as text. The host turns it into
     ## the type the database expects for that parameter, or fails the query.
     Param :: { kind : U8, text : Str }
 
@@ -49,6 +50,14 @@ Sql := [].{
     ## A UUID, for a `uuid` parameter.
     uuid : Uuid -> Param
     uuid = |value| { kind: 6, text: Uuid.to_string(value) }
+
+    ## JSON text, for a `jsonb` or `json` parameter.
+    json : Str -> Param
+    json = |value| { kind: 7, text: value }
+
+    ## A decimal number, for a `numeric` parameter.
+    dec : Dec -> Param
+    dec = |value| { kind: 8, text: value.to_str() }
 
     ## SQL's NULL, for a parameter of any type.
     null : Param

@@ -242,7 +242,7 @@ fn parseHistory(e: *Emitter, text: []const u8) Error!History {
             const snap = for (tables.items) |*s| {
                 if (std.mem.eql(u8, s.name, name)) break s;
             } else return badHistory(e, line);
-            snap.policies[@intFromEnum(op)] = if (std.mem.eql(u8, cond, "-")) null else cond;
+            snap.policies[@backingInt(op)] = if (std.mem.eql(u8, cond, "-")) null else cond;
         }
     }
     return .{ .version = version, .tables = tables.items };
@@ -259,6 +259,8 @@ fn baseOf(n: []const u8) ?ColType.Base {
     if (std.mem.eql(u8, n, "Bool")) return .bool;
     if (std.mem.eql(u8, n, "Posix")) return .posix;
     if (std.mem.eql(u8, n, "Uuid")) return .uuid;
+    if (std.mem.eql(u8, n, "Dec")) return .dec;
+    if (std.mem.eql(u8, n, "Value")) return .json;
     return null;
 }
 
@@ -271,7 +273,7 @@ fn snapshotLines(a: Allocator, out: *std.ArrayList(u8), t: *const Table) Allocat
     }
     try out.append(a, '\n');
     for (t.access, 0..) |access, i| {
-        const op: Op = @enumFromInt(i);
+        const op: Op = @fromBackingInt(@intCast(i));
         try out.print(a, "-- policy {s} {s} {s}\n", .{ t.decl.name, op.verb(), query.policyCond(access) orelse "-" });
     }
 }
@@ -354,7 +356,7 @@ fn sep(a: Allocator, out: *std.ArrayList(u8), s: []const u8) Allocator.Error!voi
 
 fn dropPolicies(a: Allocator, body: *std.ArrayList(u8), t: *const Table) Allocator.Error!void {
     for (0..4) |i| {
-        const op: Op = @enumFromInt(i);
+        const op: Op = @fromBackingInt(@intCast(i));
         try body.print(a, "DROP POLICY IF EXISTS {s} ON {s};\n", .{ try query.policyName(a, t.plain(), op), t.sql });
     }
 }

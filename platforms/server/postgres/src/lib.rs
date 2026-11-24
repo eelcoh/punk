@@ -612,6 +612,8 @@ fn check_params(statement: &Statement, params: &[Value]) -> Result<(), DbError> 
             Value::Bool(_) => *ty == Type::BOOL,
             Value::Time(_) => matches!(*ty, Type::TIMESTAMPTZ | Type::TIMESTAMP),
             Value::Uuid(_) => *ty == Type::UUID,
+            Value::Json(_) => matches!(*ty, Type::JSONB | Type::JSON),
+            Value::Dec(_) => *ty == Type::NUMERIC,
         };
         if let Value::Int(n) = value {
             let fits_width = match *ty {
@@ -639,6 +641,8 @@ fn check_params(statement: &Statement, params: &[Value]) -> Result<(), DbError> 
                 Value::Bool(_) => "a bool (Sql.bool)",
                 Value::Time(_) => "a time (Sql.posix)",
                 Value::Uuid(_) => "a UUID (Sql.uuid)",
+                Value::Json(_) => "JSON (Sql.json)",
+                Value::Dec(_) => "a Dec (Sql.dec)",
             };
             return Err(DbError::new(
                 "42804",
@@ -681,10 +685,26 @@ fn reader(name: &str, ty: &Type) -> Result<Reader, DbError> {
             }))
         },
         Type::FLOAT8 => |row, i| Ok(or_null(row.try_get::<_, Option<f64>>(i)?, Value::Float)),
-        Type::TIMESTAMPTZ | Type::TIMESTAMP => {
-            |row, i| Ok(or_null(row.try_get::<_, Option<Micros>>(i)?, |m| m.to_value()))
-        }
-        Type::UUID => |row, i| Ok(or_null(row.try_get::<_, Option<RawUuid>>(i)?, |u| Value::Uuid(u.0))),
+        Type::TIMESTAMPTZ | Type::TIMESTAMP => |row, i| {
+            Ok(or_null(row.try_get::<_, Option<Micros>>(i)?, |m| {
+                m.to_value()
+            }))
+        },
+        Type::UUID => |row, i| {
+            Ok(or_null(row.try_get::<_, Option<RawUuid>>(i)?, |u| {
+                Value::Uuid(u.0)
+            }))
+        },
+        Type::JSONB | Type::JSON => |row, i| {
+            Ok(or_null(row.try_get::<_, Option<RawJson>>(i)?, |j| {
+                Value::Json(j.0)
+            }))
+        },
+        Type::NUMERIC => |row, i| {
+            Ok(or_null(row.try_get::<_, Option<Numeric>>(i)?, |n| {
+                Value::Dec(n.0)
+            }))
+        },
         ref t if is_text(t) => {
             |row, i| Ok(or_null(row.try_get::<_, Option<String>>(i)?, Value::Text))
         }
@@ -692,7 +712,7 @@ fn reader(name: &str, ty: &Type) -> Result<Reader, DbError> {
             return Err(DbError::new(
                 "0A000",
                 format!(
-                    "column \"{name}\" is {}; punk reads bool, int, float, text, timestamptz and uuid columns, so convert it in the SQL (`{name}::text`)",
+                    "column \"{name}\" is {}; punk reads bool, int, float, text, timestamptz, uuid, jsonb and numeric columns, so convert it in the SQL (`{name}::text`)",
                     ty.name()
                 ),
             ));
@@ -734,6 +754,18 @@ impl ToSql for Arg<'_> {
             }
             Value::Uuid(bytes) => {
                 out.extend_from_slice(bytes);
+                Ok(IsNull::No)
+            }
+            Value::Json(text) => {
+                // jsonb is a version byte, then the text; json is the text.
+                if *ty == Type::JSONB {
+                    out.extend_from_slice(&[1]);
+                }
+                out.extend_from_slice(text.as_bytes());
+                Ok(IsNull::No)
+            }
+            Value::Dec(text) => {
+                write_numeric(text, out)?;
                 Ok(IsNull::No)
             }
         }
@@ -785,6 +817,144 @@ impl<'a> postgres::types::FromSql<'a> for RawUuid {
     fn accepts(ty: &Type) -> bool {
         *ty == Type::UUID
     }
+}
+
+/// A `jsonb` or `json` as text.
+struct RawJson(String);
+
+impl<'a> postgres::types::FromSql<'a> for RawJson {
+    fn from_sql(ty: &Type, raw: &'a [u8]) -> Result<Self, Box<dyn Error + Sync + Send>> {
+        let text = if *ty == Type::JSONB {
+            match raw.split_first() {
+                Some((1, rest)) => rest,
+                _ => return Err("jsonb of an unknown version".into()),
+            }
+        } else {
+            raw
+        };
+        Ok(RawJson(std::str::from_utf8(text)?.to_owned()))
+    }
+
+    fn accepts(ty: &Type) -> bool {
+        matches!(*ty, Type::JSONB | Type::JSON)
+    }
+}
+
+/// A `numeric` as decimal text: `-12.50`, with as many digits after the point as its scale.
+struct Numeric(String);
+
+impl<'a> postgres::types::FromSql<'a> for Numeric {
+    fn from_sql(_: &Type, raw: &'a [u8]) -> Result<Self, Box<dyn Error + Sync + Send>> {
+        read_numeric(raw).map(Numeric)
+    }
+
+    fn accepts(ty: &Type) -> bool {
+        *ty == Type::NUMERIC
+    }
+}
+
+/// Postgres's binary `numeric`: the number of digits, the weight of the first, the sign, the
+/// scale, then the digits, each 0..9999 (base 10000).
+fn read_numeric(raw: &[u8]) -> Result<String, Box<dyn Error + Sync + Send>> {
+    let word = |i: usize| -> Result<u16, Box<dyn Error + Sync + Send>> {
+        let b = raw.get(i..i + 2).ok_or("a numeric is cut short")?;
+        Ok(u16::from_be_bytes([b[0], b[1]]))
+    };
+    let ndigits = word(0)? as usize;
+    let weight = word(2)? as i16 as i64;
+    let sign = word(4)?;
+    let scale = word(6)? as usize;
+    match sign {
+        0x0000 | 0x4000 => {}
+        0xC000 => return Err("the numeric is NaN, which a Dec can't be".into()),
+        _ => return Err("the numeric is infinite, which a Dec can't be".into()),
+    }
+    let mut digits = Vec::with_capacity(ndigits);
+    for i in 0..ndigits {
+        digits.push(word(8 + 2 * i)?);
+    }
+    let digit = |index: i64| -> u16 {
+        if index < 0 {
+            0
+        } else {
+            digits.get(index as usize).copied().unwrap_or(0)
+        }
+    };
+    let mut out = String::new();
+    if sign == 0x4000 {
+        out.push('-');
+    }
+    if weight < 0 {
+        out.push('0');
+    } else {
+        for i in 0..=weight {
+            if i == 0 {
+                out.push_str(&digit(i).to_string());
+            } else {
+                out.push_str(&format!("{:04}", digit(i)));
+            }
+        }
+    }
+    if scale > 0 {
+        let mut fraction = String::new();
+        let mut index = weight + 1;
+        while fraction.len() < scale {
+            fraction.push_str(&format!("{:04}", digit(index)));
+            index += 1;
+        }
+        fraction.truncate(scale);
+        out.push('.');
+        out.push_str(&fraction);
+    }
+    Ok(out)
+}
+
+/// Decimal text (`punk_server::is_decimal`) as Postgres's binary `numeric`.
+fn write_numeric(text: &str, out: &mut BytesMut) -> Result<(), Box<dyn Error + Sync + Send>> {
+    if !punk_server::is_decimal(text) {
+        return Err(format!("\"{text}\" is not a decimal number").into());
+    }
+    let (negative, digits) = match text.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, text),
+    };
+    let (whole, fraction) = digits.split_once('.').unwrap_or((digits, ""));
+    let scale = u16::try_from(fraction.len()).map_err(|_| "too many digits after the point")?;
+    // Groups of four digits, from the point outwards.
+    let whole_padded = format!("{}{whole}", "0".repeat((4 - whole.len() % 4) % 4));
+    let fraction_padded = format!("{fraction}{}", "0".repeat((4 - fraction.len() % 4) % 4));
+    let mut groups: Vec<u16> = whole_padded
+        .as_bytes()
+        .chunks(4)
+        .chain(fraction_padded.as_bytes().chunks(4))
+        .map(|c| std::str::from_utf8(c).unwrap().parse().unwrap())
+        .collect();
+    let mut weight =
+        i16::try_from(whole_padded.len() / 4).map_err(|_| "the number is too large")? - 1;
+    while groups.first() == Some(&0) {
+        groups.remove(0);
+        weight -= 1;
+    }
+    while groups.last() == Some(&0) {
+        groups.pop();
+    }
+    if groups.is_empty() {
+        weight = 0;
+    }
+    let ndigits = u16::try_from(groups.len()).map_err(|_| "the number is too large")?;
+    let sign: u16 = if negative && !groups.is_empty() {
+        0x4000
+    } else {
+        0
+    };
+    out.extend_from_slice(&ndigits.to_be_bytes());
+    out.extend_from_slice(&weight.to_be_bytes());
+    out.extend_from_slice(&sign.to_be_bytes());
+    out.extend_from_slice(&scale.to_be_bytes());
+    for g in groups {
+        out.extend_from_slice(&g.to_be_bytes());
+    }
+    Ok(())
 }
 
 fn db_error(e: postgres::Error) -> DbError {

@@ -510,13 +510,18 @@ findLink = fn id ->
 -- a new one: Db.insert { id = LinkId (Uuid.generate! ()), url, created = Time.now! () } links
 ```
 
-A column is a `Str`, `Int`, `Float`, `Bool`, `Posix` (`timestamptz`) or
-`Uuid` (`uuid`), a `Maybe` of one (nullable), or a type of the program with
+A column is a `Str`, `Int`, `Float`, `Bool`, `Posix` (`timestamptz`),
+`Uuid` (`uuid`), `Dec` (`numeric`, exact) or `Value` (`jsonb`, needs `import
+Json.Value`), a `Maybe` of one (nullable), or a type of the program with
 one tag that holds one of these (`type LinkId = LinkId Uuid`). Give ids such
 a type: the database stores what it holds, and a query only compares it with
 the same type (`link.id == "x"` is P403). For JSON, `Time.toIso8601` and
 `Time.fromIso8601`, `Uuid.toString` and `Uuid.fromString` (a `Maybe`); route
-an id with `Maybe.map ShowLink (Uuid.fromString id)`.
+an id with `Maybe.map ShowLink (Uuid.fromString id)`. A `Dec` goes to JSON
+with `E.dec` and comes from it with `D.dec`; sums and averages of a `Dec` stay
+`Dec`. A `Value` column is only compared with `Nothing` in a query (no order,
+no `==`): decode it afterwards with `D.decodeValue`, and keep in mind that
+Postgres reorders the keys of a `jsonb` object.
 
 A policy can also be a function of the user and the row. It becomes a
 Postgres row-level security policy, so the database itself keeps to it, also
@@ -677,10 +682,11 @@ findLink = fn id ->
 
 ```
 Sql.query : Str -> List Sql.Param -> Sql.Query      -- the Str must be a literal (P301)
-Sql.text : Str -> Sql.Param                        -- also Sql.int (Int), Sql.float, Sql.bool, Sql.null
+Sql.text : Str -> Sql.Param                        -- also Sql.int (Int), Sql.float, Sql.bool, Sql.dec, Sql.json (text), Sql.null
 Sql.nullable : (a -> Sql.Param) -> Maybe a -> Sql.Param
 Row.field : Str -> Row.Column a -> Row.Decoder a   -- by column name
 Row.int, Row.float, Row.text, Row.bool : Row.Column _   -- Row.nullable : Row.Column a -> Row.Column (Maybe a)
+Row.posix, Row.uuid, Row.dec, Row.json (its text) : Row.Column _   -- Row.tryColumn Value.parse Row.json
 Row.map, Row.map2 ... Row.map5, Row.succeed, Row.fail, Row.andThen
 Postgres.rows! : Row.Decoder a -> Sql.Query => Result (List a) _
 Postgres.row! : Row.Decoder a -> Sql.Query => Result (Maybe a) _      -- more than one row is a RowErr
@@ -773,9 +779,9 @@ D.decodeString link text                    -- Result Link D.Error; D.errorToStr
 E.encode 0 (E.object [("url", E.string l.url), ("created", E.int l.created)])
 ```
 
-Decoders: `string int float bool null value list keyValuePairs field at index
+Decoders: `string int float dec bool null value list keyValuePairs field at index
 maybe nullable oneOf succeed fail map map2 map3 map4 map5 andThen`. Encoders:
-`string int float bool null list object dict`, and `E.encode indent value`.
+`string int float dec bool null list object dict`, and `E.encode indent value`.
 There is no `andMap`: use `map2` to `map5`, or `andThen`. `Value` (`import
 json.Value`) is the JSON tree; `Value.parse : Str -> Result Value Str`.
 Do not compare a `Value` or a `D.Error` with `==` (the compiler hangs); compare

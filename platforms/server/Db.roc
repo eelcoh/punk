@@ -138,6 +138,17 @@ Db := [].{
     read_uuid : Row.Column(Uuid)
     read_uuid = Row.uuid
 
+    read_json : Row.Column(Str)
+    read_json = Row.json
+
+    read_dec : Row.Column(Dec)
+    read_dec = Row.dec
+
+    ## A column read through a function that can fail: punk writes
+    ## `|t| Value.parse(t)` for a JSON column of type `Value`.
+    read_try : Row.Column(a), (a -> Try(b, Str)) -> Row.Column(b)
+    read_try = |column, f| Row.try_column(column, f)
+
     ## A column of a type of the program that wraps one of the above
     ## (`type LinkId = LinkId Str`): punk writes `|v| LinkId(v)` for `wrap`.
     read_wrap : Row.Column(a), (a -> b) -> Row.Column(b)
@@ -175,6 +186,18 @@ Db := [].{
 
     param_uuid : Uuid -> Sql.Param
     param_uuid = |value| Sql.uuid(value)
+
+    param_json : Str -> Sql.Param
+    param_json = |text| Sql.json(text)
+
+    param_dec : Dec -> Sql.Param
+    param_dec = |value| Sql.dec(value)
+
+    setting_json : Str, Str -> (Str, Str)
+    setting_json = |name, text| (name, text)
+
+    setting_dec : Str, Dec -> (Str, Str)
+    setting_dec = |name, value| (name, value.to_str())
 
     setting_posix : Str, Time.Posix -> (Str, Str)
     setting_posix = |name, value| (name, Time.to_iso8601(value))

@@ -1708,6 +1708,74 @@ test "queries: own types, Posix and Uuid as columns" {
     try has(schema, "CREATE POLICY notes_read ON notes FOR SELECT USING (owner = NULLIF(current_setting('punk.user_name', true), '') OR owner = 'admin');");
 }
 
+test "queries: Dec and JSON columns" {
+    const src =
+        \\app [main!] { pf: platform "p.roc", Json: "json" }
+        \\
+        \\import pf.Db
+        \\import Json.Value
+        \\
+        \\type alias Order =
+        \\    { id : Int
+        \\    , owner : Str
+        \\    , total : Dec
+        \\    , meta : Value
+        \\    , extra : Maybe Value
+        \\    }
+        \\
+        \\table orders : Order
+        \\    key id
+        \\    read fn user, order -> order.total < 1000 || order.owner == user.id
+        \\    insert everyone
+        \\    update everyone
+        \\    delete nobody
+        \\
+        \\big = fn limit -> orders |> Db.filter (fn o -> o.total > limit && o.extra /= Nothing) |> Db.sortBy .total |> Db.map .meta |> Db.all
+        \\
+        \\add = fn o -> Db.insert o orders
+        \\
+        \\raise = orders |> Db.update (fn o -> { o | total = o.total * 1.1 })
+        \\
+        \\totals = orders |> Db.groupBy .owner |> Db.map (fn owner, rows -> { owner, sum = Db.sum .total rows, avg = Db.avg .total rows }) |> Db.all
+        \\
+    ;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var diag: punk.Diagnostic = .{};
+    const out = punk.translate(arena.allocator(), src, &diag) catch |err| {
+        std.debug.print("error at {d}:{d}: {s}\n", .{ diag.line, diag.col, diag.message });
+        return err;
+    };
+    const has = struct {
+        fn f(o: []const u8, part: []const u8) !void {
+            if (std.mem.find(u8, o, part) == null) {
+                std.debug.print("missing:\n{s}\nin:\n{s}\n", .{ part, o });
+                return error.TestUnexpectedResult;
+            }
+        }
+    }.f;
+    // A JSON column is read with the json package's parser and written with
+    // its encoder; a Dec is a numeric.
+    try has(out, "big = |limit| Db.all_rows([Db.param_dec(limit)], \"SELECT meta FROM orders WHERE total > $1 AND extra IS NOT NULL ORDER BY total ASC\", Db.field(Db.read_try(Db.read_json, |punk_t| Value.parse(punk_t)), \"meta\", Db.done))");
+    try has(out, "Db.param_dec(punk_row1.total), Db.param_json(Value.encode(0, punk_row1.meta)), Db.param_nullable(punk_row1.extra, |punk_v| Db.param_json(Value.encode(0, punk_v)))]");
+    try has(out, "raise = Db.changes([Db.param_dec(1.1)], \"UPDATE orders SET total = total * $1\")");
+    // Sums and averages of a numeric stay numeric.
+    try has(out, "\"SELECT owner, SUM(total) AS sum, AVG(total) AS avg FROM orders GROUP BY owner\"");
+    try has(out, "Db.field(Db.read_dec, \"sum\", |punk_c");
+    const schema = (punk.schema(arena.allocator(), src, null, &diag) catch |err| {
+        std.debug.print("error at {d}:{d}: {s}\n", .{ diag.line, diag.col, diag.message });
+        return err;
+    }).sql;
+    try has(schema, "-- table orders : id Int key, owner Str, total Dec, meta Value, extra Maybe Value\n");
+    try has(schema, "    total numeric NOT NULL,\n    meta jsonb NOT NULL,\n    extra jsonb\n");
+    try has(schema, "USING (total < 1000 OR owner = NULLIF(current_setting('punk.user_id', true), ''))");
+
+    // JSON is not compared or sorted on in a query, and needs the json package.
+    try checkRule(src ++ "q = orders |> Db.filter (fn o -> o.meta == o.meta) |> Db.all\n", 28, 41, .query_type);
+    try checkRule(src ++ "q = orders |> Db.sortBy .meta |> Db.all\n", 28, 26, .query_type);
+    try checkError("app [main!] { pf: platform \"p.roc\" }\n\nimport pf.Db\n\ntype alias T =\n    { id : Int\n    , v : Value\n    }\n\ntable ts : T\n    key id\n    read everyone\n    insert everyone\n    update everyone\n    delete everyone\n", 7, "import Json.Value");
+}
+
 test "rules: own types as columns (P403)" {
     const head =
         \\app [main!] { pf: platform "p.roc" }

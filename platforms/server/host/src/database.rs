@@ -21,6 +21,23 @@ pub enum Value {
     Time(i64),
     /// A UUID (punk's `Uuid`), its 16 bytes: a `uuid`.
     Uuid([u8; 16]),
+    /// JSON text (punk's `Json.Value`): a `jsonb` or `json`.
+    Json(String),
+    /// An exact decimal number written as text, `-12.50` (punk's `Dec`): a `numeric`.
+    Dec(String),
+}
+
+/// Whether the text is a decimal number as punk and Postgres write one: an optional `-`,
+/// digits, and maybe a `.` with digits after it.
+pub fn is_decimal(text: &str) -> bool {
+    let digits = text.strip_prefix('-').unwrap_or(text);
+    let (whole, fraction) = match digits.split_once('.') {
+        Some((w, f)) => (w, Some(f)),
+        None => (digits, None),
+    };
+    !whole.is_empty()
+        && whole.bytes().all(|c| c.is_ascii_digit())
+        && fraction.is_none_or(|f| !f.is_empty() && f.bytes().all(|c| c.is_ascii_digit()))
 }
 
 /// The 16 bytes of a UUID written as 32 hexadecimal digits, with or without the four `-` of
@@ -198,6 +215,8 @@ pub(crate) const FLOAT: u8 = 3;
 pub(crate) const BOOL: u8 = 4;
 pub(crate) const TIME: u8 = 5;
 pub(crate) const UUID: u8 = 6;
+pub(crate) const JSON: u8 = 7;
+pub(crate) const DEC: u8 = 8;
 
 /// A value as punk writes it in a `Sql.Param`: its kind and its text. `None` when the text
 /// doesn't fit the kind (only a bug in `Sql.roc` makes one).
@@ -214,6 +233,8 @@ pub(crate) fn from_cell(kind: u8, text: &str) -> Option<Value> {
         },
         TIME => Value::Time(text.parse().ok()?),
         UUID => Value::Uuid(parse_uuid(text)?),
+        JSON => Value::Json(text.to_owned()),
+        DEC if is_decimal(text) => Value::Dec(text.to_owned()),
         _ => return None,
     })
 }
@@ -228,6 +249,8 @@ pub(crate) fn to_cell(value: &Value) -> (u8, String) {
         Value::Bool(b) => (BOOL, if *b { "true" } else { "false" }.to_owned()),
         Value::Time(ms) => (TIME, ms.to_string()),
         Value::Uuid(bytes) => (UUID, uuid_text(bytes)),
+        Value::Json(text) => (JSON, text.clone()),
+        Value::Dec(text) => (DEC, text.clone()),
     }
 }
 
@@ -259,6 +282,9 @@ mod tests {
             Value::Time(-1),
             Value::Time(1_764_000_000_123),
             Value::Uuid(*b"0123456789abcdef"),
+            Value::Json(r#"{"a": [1, null]}"#.into()),
+            Value::Dec("-12.50".into()),
+            Value::Dec("0".into()),
         ] {
             let (kind, text) = to_cell(&value);
             assert_eq!(from_cell(kind, &text), Some(value));
@@ -271,7 +297,13 @@ mod tests {
         assert_eq!(from_cell(BOOL, "yes"), None);
         assert_eq!(from_cell(9, ""), None);
         assert_eq!(from_cell(UUID, "0190c3a5-7b1e-7cc0-8a3b-2f1e7d6c5b4"), None);
-        assert_eq!(from_cell(UUID, "0190c3a57-b1e-7cc0-8a3b-2f1e7d6c5b4a"), None);
+        assert_eq!(
+            from_cell(UUID, "0190c3a57-b1e-7cc0-8a3b-2f1e7d6c5b4a"),
+            None
+        );
+        for bad in ["", "-", "1.", ".5", "1e5", "1,5", "+1", "NaN"] {
+            assert_eq!(from_cell(DEC, bad), None, "{bad}");
+        }
     }
 
     #[test]

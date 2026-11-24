@@ -3,6 +3,7 @@ module Encode exposing
     , string
     , int
     , float
+    , dec
     , bool
     , null
     , list
@@ -42,6 +43,11 @@ float : Float -> Value
 float = fn x ->
     -- NaN and the infinities are the floats for which x - x is not 0.
     if x - x == 0.0 then JNumber (F64.toStr x) else JNull
+
+{-| An exact decimal number: `12.5` is written `12.5`, not `12.499999...`. -}
+dec : Dec -> Value
+dec = fn x ->
+    JNumber (Dec.toStr x)
 
 bool : Bool -> Value
 bool = fn b ->

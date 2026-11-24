@@ -51,9 +51,9 @@ expect toRoute (Http.request Get "/hello") == Just Hello
 | `Secret` | a password, key or token, from `Config.secret`: it can't become text (`Str.inspect` shows `<secret>`). `matches : Str -> Secret -> Bool` compares in constant time; `fromText` for tests |
 | `Log` | `info!`, `warn!`, `error! : Str => {}` |
 | `Postgres` | `rows! : Row.Decoder a -> Sql.Query => Result (List a) _`, `row!` (at most one row: `Maybe a`), `execute! : Sql.Query => Result U64 _` (rows changed) |
-| `Sql` | `query : Str -> List Sql.Param -> Sql.Query` (the SQL is a literal, rule P301), parameters `text`, `int`, `float`, `bool`, `posix`, `uuid`, `null`, `nullable` |
+| `Sql` | `query : Str -> List Sql.Param -> Sql.Query` (the SQL is a literal, rule P301), parameters `text`, `int`, `float`, `bool`, `posix`, `uuid`, `dec`, `json` (JSON text), `null`, `nullable` |
 | `Db` | the query language: `table` declarations and pipelines (`links \|> Db.filter f \|> Db.first`), `run! : Db.Query a => Result a _`, `toSql` |
-| `Row` | decoders as Elm's `Json.Decode`: `field "url" Row.text`, columns `int`, `float`, `text`, `bool`, `posix`, `uuid`, `nullable`, `mapColumn`; `map` to `map5`, `succeed`, `fail`, `andThen` |
+| `Row` | decoders as Elm's `Json.Decode`: `field "url" Row.text`, columns `int`, `float`, `text`, `bool`, `posix`, `uuid`, `dec`, `json` (its text), `nullable`, `mapColumn`, `tryColumn` (`Row.tryColumn Value.parse Row.json`); `map` to `map5`, `succeed`, `fail`, `andThen` |
 | `Mongo` | `collection "links"`, searches `find filter`, `sortBy`, `sortByDescending`, `drop`, `take`, run with `all! decoder`, `first! decoder`, `count!`; `insert! document`, `insertIfNew!`, `update! filter changes`, `delete! filter` |
 | `Bson` | values for documents, as Elm's `Json.Encode`: `text`, `int`, `float`, `bool`, `null`, `nullable`, `list`, `object [("url", Bson.text url)]`, `objectId`, `time` (a `Posix`) |
 | `Doc` | decoders for documents, as Elm's `Json.Decode`: `field "url" Doc.text`, `optionalField`, `int`, `float`, `text`, `bool`, `objectId`, `time` (a `Posix`), `list`, `nullable`, `map` to `map5`, `andThen`, `oneOf`, `succeed`, `fail`, `decode` |
@@ -119,7 +119,8 @@ findLink = fn id ->
   with `Db.count`, `Db.sum`, `Db.min`, `Db.max` and `Db.avg`. Grouping works
   on one table for now.
 - **Column types.** A column is a `Str`, `Int`, `Float`, `Bool`, `Posix`
-  (`Time`) or `Uuid`, or a `Maybe` of one when it can be empty. A type of
+  (`Time`), `Uuid`, `Dec` or `Value` (JSON, from the `json` package), or a
+  `Maybe` of one when it can be empty. A type of
   the program with one tag that holds one of these is a column too, and
   the right one for ids:
 
@@ -139,6 +140,14 @@ findLink = fn id ->
   owner can't be taken for a link. A `Posix` column can be compared and
   sorted on in a query; in a migration or policy a constant time is
   `Time.millisToPosix 0`.
+
+  A `Dec` is an exact decimal (`numeric`), for money and the like: sums and
+  averages of it stay `Dec`, and it reads and writes JSON with `D.dec` and
+  `E.dec`. A `Value` is JSON as it came (`jsonb`), for data whose shape the
+  table doesn't fix: it needs `import Json.Value` next to the table, a query
+  only tests it against `Nothing` (it has no order or equality in SQL), and
+  you decode it after the query with `D.decodeValue`. Postgres keeps `jsonb`
+  objects with their keys in its own order (shorter keys first).
 - **Checked by the compiler, without a database.** A column the table
   doesn't have, a literal of the wrong type and a comparison of a `Str` with
   an `Int` are errors with a code (P403); a function the database can't run
@@ -177,7 +186,7 @@ findLink = fn id ->
   `schema.sql` next to the app is a history of versions, which `punk check
   --schema app.punk` writes (`Str` is `text`, `Int` `bigint`, `Float`
   `double precision`, `Bool` `boolean`, `Posix` `timestamptz`, `Uuid`
-  `uuid`, `Maybe` nullable, the key `PRIMARY KEY`). Each version records the tables as they were. When the tables in
+  `uuid`, `Dec` `numeric`, `Value` `jsonb`, `Maybe` nullable, the key `PRIMARY KEY`). Each version records the tables as they were. When the tables in
   the program differ from the last version, the program doesn't compile
   (P405) until `punk check --schema` has added a version. A new table, a new
   `Maybe` column or a new policy needs nothing else; any other change of a

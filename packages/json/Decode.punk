@@ -7,6 +7,7 @@ module Decode exposing
     , string
     , int
     , float
+    , dec
     , bool
     , null
     , value
@@ -120,6 +121,21 @@ int =
                         Ok n -> Ok n
                         Err _ -> Err (Failure "Expecting an INT" v)
                 _ -> Err (Failure "Expecting an INT" v)
+        )
+
+{-| An exact decimal number, for money and the like: `12.50`, `-3`. A
+`Dec` has 18 digits after the point; a number beyond its range is an
+error. -}
+dec : Decoder Dec
+dec =
+    Decoder
+        (fn v ->
+            case v of
+                JNumber text ->
+                    case Dec.fromStr text of
+                        Ok x -> Ok x
+                        Err _ -> Err (Failure "Expecting a DECIMAL" v)
+                _ -> Err (Failure "Expecting a DECIMAL" v)
         )
 
 float : Decoder Float

@@ -43,7 +43,8 @@ pub const TableDecl = struct {
     pub const Line = struct { word: []const u8, arg: []const u8, policy: ?*Expr = null };
 };
 
-/// The type of a column: Str, Int, Float, Bool, Posix (a time) or Uuid, a
+/// The type of a column: Str, Int, Float, Bool, Posix (a time), Uuid, Dec (a
+/// decimal number) or Value (JSON, from the json package), a
 /// type of the module that wraps one of these (`type LinkId = LinkId Str`),
 /// or `Maybe` of one of these for a column that can be NULL.
 pub const ColType = struct {
@@ -52,7 +53,7 @@ pub const ColType = struct {
     /// The type of the module around the base, if any.
     wrap: ?Wrap = null,
 
-    pub const Base = enum { str, int, float, bool, posix, uuid };
+    pub const Base = enum { str, int, float, bool, posix, uuid, dec, json };
 
     /// `type LinkId = LinkId Str`: the type's name and its one tag.
     pub const Wrap = struct { name: []const u8, tag: []const u8 };
@@ -76,6 +77,8 @@ pub const ColType = struct {
             .bool => "Bool",
             .posix => "Posix",
             .uuid => "Uuid",
+            .dec => "Dec",
+            .json => "Value",
         };
     }
 
@@ -202,8 +205,11 @@ fn resolveTable(e: *Emitter, items: []const tr.Item, decl: TableDecl) Error!*Tab
     var columns: std.ArrayList(Column) = .empty;
     for (inner.record.fields) |f| {
         const col_ty = columnType(items, f.ty) orelse {
-            return e.errAtRule(f.name, .table_decl, try std.fmt.allocPrint(a, "the column '{s}' of the table '{s}' can't be stored: a column is a Str, Int, Float, Bool, Posix or Uuid, a type with one tag that holds one of these (type LinkId = LinkId Str), or a Maybe of one of these when it can be empty", .{ f.name, decl.name }));
+            return e.errAtRule(f.name, .table_decl, try std.fmt.allocPrint(a, "the column '{s}' of the table '{s}' can't be stored: a column is a Str, Int, Float, Bool, Posix, Uuid, Dec or Value (JSON), a type with one tag that holds one of these (type LinkId = LinkId Str), or a Maybe of one of these when it can be empty", .{ f.name, decl.name }));
         };
+        if (col_ty.base == .json and e.json_alias == null) {
+            return e.errAtRule(f.name, .table_decl, try std.fmt.allocPrint(a, "the column '{s}' is JSON, a Value of the json package: add 'import Json.Value' (and 'Json: \"json\"' to the packages of the app)", .{f.name}));
+        }
         const plain = try tr.snake(a, f.name);
         try columns.append(a, .{ .name = f.name, .sql = try sqlIdent(a, plain), .plain = plain, .ty = col_ty });
     }
@@ -353,12 +359,14 @@ fn wrapType(items: []const tr.Item, n: []const u8) ?ColType {
 
 fn baseType(n: []const u8) ?ColType.Base {
     const names = .{
-        .{ "Str", .str },     .{ "String", .str },
-        .{ "Int", .int },     .{ "I64", .int },
-        .{ "Float", .float }, .{ "F64", .float },
-        .{ "Bool", .bool },   .{ "Posix", .posix },
+        .{ "Str", .str },          .{ "String", .str },
+        .{ "Int", .int },          .{ "I64", .int },
+        .{ "Float", .float },      .{ "F64", .float },
+        .{ "Bool", .bool },        .{ "Posix", .posix },
         .{ "Time.Posix", .posix }, .{ "Uuid", .uuid },
-        .{ "Uuid.Uuid", .uuid },
+        .{ "Uuid.Uuid", .uuid },   .{ "Dec", .dec },
+        .{ "Value", .json },       .{ "Value.Value", .json },
+        .{ "Json.Value", .json },
     };
     inline for (names) |row| if (std.mem.eql(u8, n, row[0])) return row[1];
     return null;
@@ -403,6 +411,8 @@ pub fn sqlType(ty: ColType) []const u8 {
         .bool => "boolean",
         .posix => "timestamptz",
         .uuid => "uuid",
+        .dec => "numeric",
+        .json => "jsonb",
     };
 }
 
@@ -742,7 +752,8 @@ pub fn emit(e: *Emitter, name: []const u8, m: Member, args: []*Expr) Error!void 
             const lam = try rowLambda(e, s.arg, s.name, if (group != null) 2 else sources.items.len);
             var q: Sql = .{ .e = e, .table = table, .row = null, .out = &sql, .params = params, .bound = if (group != null) &.{} else try bind(a, sources.items, lam.rows), .group = try groupFor(a, group, sources.items, lam.rows) };
             const ty = try q.expr(lam.body, null, 0);
-            if (ty.base == .bool) return e.errAtRule(lam.at, .query_type, "a sort key is a Str, an Int or a Float: Bool has no order in Elm");
+            if (ty.base == .bool) return e.errAtRule(exprText(s.arg) orelse lam.at, .query_type, "a sort key is a Str, an Int or a Float: Bool has no order in Elm");
+            if (ty.base == .json) return e.errAtRule(exprText(s.arg) orelse lam.at, .query_type, "a sort key is a Str, an Int or a Float: JSON has no order");
             try sql.appendSlice(a, if (s.kind == .sortByDescending) " DESC" else " ASC");
             if (i > 0) try sql.appendSlice(a, ", ");
         }
@@ -1108,6 +1119,8 @@ fn kindName(b: ColType.Base) []const u8 {
         .bool => "bool",
         .posix => "posix",
         .uuid => "uuid",
+        .dec => "dec",
+        .json => "json",
     };
 }
 
@@ -1124,42 +1137,51 @@ fn unwrapClose(e: *Emitter, ty: ColType) Error!void {
     try e.w("(punk_w) => punk_w }");
 }
 
+/// `Db.param_text(x)` for a value of a non-Maybe type: unwrapped from its
+/// own type, and a JSON `Value` written as text.
+fn emitParamOf(e: *Emitter, ty: ColType, x: union(enum) { expr: *Expr, name: []const u8 }) Error!void {
+    const alias = e.db_alias.?;
+    try e.w(alias);
+    try e.w(".param_");
+    try e.w(kindName(ty.base));
+    try e.w("(");
+    if (ty.base == .json) {
+        try e.w(e.json_alias.?);
+        try e.w(".encode(0, ");
+    }
+    try unwrapOpen(e, ty);
+    switch (x) {
+        .expr => |ex| try e.emitExpr(ex),
+        .name => |n| try e.w(n),
+    }
+    try unwrapClose(e, ty);
+    if (ty.base == .json) try e.w(")");
+    try e.w(")");
+}
+
 fn emitParams(e: *Emitter, params: []const Param) Error!void {
     const alias = e.db_alias.?;
     try e.w("[");
     for (params, 0..) |p, i| {
         if (i > 0) try e.w(", ");
-        const one = p.ty.storage();
-        try e.w(alias);
         if (p.ty.nullable) {
+            var one = p.ty;
+            one.nullable = false;
+            try e.w(alias);
             try e.w(".param_nullable(");
             try e.emitExpr(p.expr);
             try e.w(", ");
-            if (p.ty.wrap != null) {
+            if (one.wrap != null or one.base == .json) {
                 // `|punk_v| Db.param_text(match punk_v { LinkId(punk_w) => punk_w })`
                 try e.w("|punk_v| ");
-                try e.w(alias);
-                try e.w(".param_");
-                try e.w(kindName(one.base));
-                try e.w("(");
-                try unwrapOpen(e, p.ty);
-                try e.w("punk_v");
-                try unwrapClose(e, p.ty);
-                try e.w(")");
+                try emitParamOf(e, one, .{ .name = "punk_v" });
             } else {
                 try e.w(alias);
                 try e.w(".param_");
                 try e.w(kindName(one.base));
             }
-        } else {
-            try e.w(".param_");
-            try e.w(kindName(one.base));
-            try e.w("(");
-            try unwrapOpen(e, p.ty);
-            try e.emitExpr(p.expr);
-            try unwrapClose(e, p.ty);
-        }
-        try e.w(")");
+            try e.w(")");
+        } else try emitParamOf(e, p.ty, .{ .expr = p.expr });
     }
     try e.w("]");
 }
@@ -1224,9 +1246,19 @@ fn emitReader(e: *Emitter, ty: ColType) Error!void {
         try e.w(alias);
         try e.w(".read_wrap(");
     }
+    if (ty.base == .json) {
+        // `Db.read_try(Db.read_json, |punk_t| Value.parse(punk_t))`
+        try e.w(alias);
+        try e.w(".read_try(");
+    }
     try e.w(alias);
     try e.w(".read_");
     try e.w(kindName(ty.base));
+    if (ty.base == .json) {
+        try e.w(", |punk_t| ");
+        try e.w(e.json_alias.?);
+        try e.w(".parse(punk_t))");
+    }
     if (ty.wrap) |w| {
         try e.w(", |punk_w| ");
         try e.w(w.tag);
@@ -1249,7 +1281,7 @@ fn checkLiteral(e: *Emitter, value: *Expr, ty: ColType, column: []const u8) Erro
     if (ty.wrap) |w| {
         return e.errAtRule(exprText(v) orelse column, .query_type, try std.fmt.allocPrint(e.a, "this value doesn't fit {s}, which is {s}: give {s} ({s} {s})", .{ column, try ty.an(e.a), try (ColType{ .base = ty.base, .wrap = w }).an(e.a), w.tag, exprText(v) orelse "..." }));
     }
-    if (base == ty.base or (base == .int and ty.base == .float)) {
+    if (base == ty.base or (base == .int and ty.base == .float) or (ty.base == .dec and (base == .int or base == .float))) {
         if (!ty.nullable) return;
     }
     return e.errAtRule(exprText(v) orelse column, .query_type, try std.fmt.allocPrint(e.a, "this value doesn't fit {s}, which is {s}", .{ column, try ty.an(e.a) }));
@@ -1444,6 +1476,8 @@ pub const Sql = struct {
                     .bool => "::boolean",
                     .posix => "::timestamptz",
                     .uuid => "::uuid",
+                    .dec => "::numeric",
+                    .json => "::jsonb",
                 };
                 try q.out.print(a, "NULLIF(current_setting('{s}', true), ''){s}", .{ field.setting, cast });
                 return ty;
@@ -1476,7 +1510,7 @@ pub const Sql = struct {
                 var ty = literalType(x) orelse return q.notInPolicy(x);
                 if (want) |w_ty| {
                     try checkLiteral(q.e, x, w_ty.storage(), "the column it meets");
-                    if (w_ty.wrap != null) ty = w_ty.storage();
+                    if (w_ty.wrap != null or w_ty.base == .dec) ty = w_ty.storage();
                 }
                 for (l) |c| if (c != '_') try q.out.append(a, c);
                 return ty;
@@ -1531,7 +1565,9 @@ pub const Sql = struct {
         switch (m) {
             .sum, .avg => {
                 if (!isNumber(ty)) return q.e.errAtRule(at, .query_type, try std.fmt.allocPrint(a, "'{s}' adds up numbers: this is {s}", .{ name, try ty.an(a) }));
-                // Postgres sums bigints as numeric and averages as numeric.
+                // Postgres sums and averages numerics as numeric.
+                if (ty.base == .dec) return ty;
+                // It sums bigints as numeric and averages as numeric.
                 if (m == .avg or ty.base == .float) {
                     try q.w("::double precision");
                     return .{ .base = .float };
@@ -1541,6 +1577,7 @@ pub const Sql = struct {
             },
             .min, .max => {
                 if (ty.base == .bool) return q.e.errAtRule(at, .query_type, "Bool has no order in Elm, so it has no min or max");
+                if (ty.base == .json) return q.e.errAtRule(at, .query_type, "JSON has no order, so it has no min or max");
                 return ty;
             },
             else => unreachable,
@@ -1664,6 +1701,9 @@ pub const Sql = struct {
             const lt0 = (try q.typeOf(lhs)) orelse if (q.policy) literalType(unparen(lhs)) else null;
             const rt0 = (try q.typeOf(rhs)) orelse if (q.policy) literalType(unparen(rhs)) else null;
             const nullable = (lt0 != null and lt0.?.nullable) or (rt0 != null and rt0.?.nullable);
+            if ((lt0 != null and lt0.?.base == .json) or (rt0 != null and rt0.?.base == .json)) {
+                return q.e.errAtRule(op, .query_type, "a JSON column is compared only with Nothing (== Nothing, /= Nothing): decode it after the query to look inside");
+            }
             if (nullable and !(std.mem.eql(u8, op, "==") or std.mem.eql(u8, op, "/=") or std.mem.eql(u8, op, "!="))) {
                 return q.e.errAtRule(op, .query_type, "a Maybe column is compared with == or /=: there is no order between Nothing and a value");
             }
@@ -1724,7 +1764,7 @@ fn isArith(op: []const u8) bool {
 }
 
 fn isNumber(t: ColType) bool {
-    return t.wrap == null and (t.base == .int or t.base == .float);
+    return t.wrap == null and (t.base == .int or t.base == .float or t.base == .dec);
 }
 
 pub fn unparen(x_in: *Expr) *Expr {

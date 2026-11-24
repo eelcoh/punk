@@ -49,7 +49,8 @@ fn times_and_uuids_have_their_types() {
         Value::Time(-1),
         Value::Uuid(*b"0123456789abcdef"),
     ];
-    db.run("INSERT INTO t VALUES ($1, $2, $3)", &params).unwrap();
+    db.run("INSERT INTO t VALUES ($1, $2, $3)", &params)
+        .unwrap();
     let rows = db.run("SELECT * FROM t", &[]).unwrap();
     assert_eq!(rows.rows, vec![params.to_vec()]);
     // What Postgres makes itself reads the same way.
@@ -61,13 +62,61 @@ fn times_and_uuids_have_their_types() {
         .unwrap();
     assert_eq!(
         rows.rows,
-        vec![vec![Value::Time(1_795_521_600_001), Value::Uuid(*b"0123456789abcdef")]]
+        vec![vec![
+            Value::Time(1_795_521_600_001),
+            Value::Uuid(*b"0123456789abcdef")
+        ]]
     );
     // Text is not a UUID.
     let e = db
         .run("SELECT * FROM t WHERE id = $1", &[Value::Text("x".into())])
         .unwrap_err();
     assert_eq!(e.code, "42804");
+}
+
+#[test]
+fn json_and_numeric_have_their_types() {
+    let Some(db) = pool(
+        "json_numeric",
+        "CREATE TABLE t (j jsonb, k json, n numeric, m numeric(10, 2))",
+    ) else {
+        return;
+    };
+    let cases = [
+        ("0", "0.00"),
+        ("-12.5", "-12.50"),
+        ("12345678.000123", "12345678.00"),
+        ("0.0001", "0.00"),
+        ("10000", "10000.00"),
+        ("-0.05", "-0.05"),
+    ];
+    for (n, m) in cases {
+        db.run("DELETE FROM t", &[]).unwrap();
+        let params = [
+            Value::Json(r#"{"a": [1, null]}"#.into()),
+            Value::Json(r#"{"b" : true}"#.into()),
+            Value::Dec(n.into()),
+            Value::Dec(n.into()),
+        ];
+        db.run("INSERT INTO t VALUES ($1, $2, $3, $4)", &params)
+            .unwrap();
+        let rows = db.run("SELECT * FROM t", &[]).unwrap();
+        assert_eq!(
+            rows.rows,
+            vec![vec![
+                Value::Json(r#"{"a": [1, null]}"#.into()),
+                Value::Json(r#"{"b" : true}"#.into()),
+                Value::Dec(n.into()),
+                Value::Dec(m.into()),
+            ]],
+            "{n}"
+        );
+        // Postgres's own text of the number is the same.
+        let text = db.run("SELECT n::text AS n FROM t", &[]).unwrap();
+        assert_eq!(text.rows, vec![vec![Value::Text(n.into())]]);
+    }
+    let rows = db.run("SELECT 'NaN'::numeric AS n", &[]).unwrap_err();
+    assert!(rows.message.contains("NaN"), "{}", rows.message);
 }
 
 #[test]

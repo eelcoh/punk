@@ -208,6 +208,7 @@ pub fn schema(arena: Allocator, src: []const u8, existing: ?[]const u8, diag: *D
     var p = Parser{ .a = arena, .src = src, .toks = toks, .diag = diag };
     const items = try p.parseModule();
     var e = Emitter{ .a = arena, .diag = diag, .src = src };
+    try e.findSqlQuery(items);
     try query.resolveTables(&e, items);
     return migrate.history(&e, items, existing);
 }
@@ -1972,6 +1973,9 @@ pub const Emitter = struct {
     /// The name the file uses for the platform's `Db` module, whose
     /// `Db.filter`, `Db.all`, ... make the queries of query.zig.
     db_alias: ?[]const u8 = null,
+    /// The name of the json package's `Value` module (`import Json.Value`),
+    /// whose `parse` and `encode` read and write a JSON column.
+    json_alias: ?[]const u8 = null,
     /// The tables the module declares, by name (query.zig).
     tables: std.StringHashMapUnmanaged(*query.Table) = .empty,
     /// The fields of the user that the tables' policies look at (query.zig).
@@ -2852,6 +2856,12 @@ pub const Emitter = struct {
             if (item.kind != .raw) continue;
             const imp = parseImport(item.kind.raw) orelse continue;
             if (imp.package != null and std.mem.eql(u8, imp.module, "Db")) e.db_alias = imp.alias;
+            // `import json.Value`, or `import Json.Value` before the package
+            // names are written in lower case.
+            if (imp.package != null and std.mem.eql(u8, imp.module, "Value")) e.json_alias = imp.alias;
+            if (imp.package == null and std.mem.endsWith(u8, imp.module, ".Value")) {
+                e.json_alias = if (std.mem.eql(u8, imp.alias, imp.module)) "Value" else imp.alias;
+            }
             if (imp.package != null) for (mongo_functions) |f| if (std.mem.eql(u8, imp.module, f.module)) {
                 const what: @FieldType(MongoName, "what") = if (std.mem.eql(u8, f.member, "collection")) .collection else .field;
                 try e.mongo_names.append(e.a, .{ .name = try std.fmt.allocPrint(e.a, "{s}.{s}", .{ imp.alias, f.member }), .what = what });

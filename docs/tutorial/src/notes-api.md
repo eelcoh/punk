@@ -9,7 +9,8 @@ Now the real app: notes, stored in Postgres, with JSON in and out.
 | `GET /notes/<id>` | `200` with the note, or `404` |
 | `DELETE /notes/<id>` | `204`, or `404` |
 
-A note looks like `{"id": "n8301...", "title": "Shopping", "body": "milk, bread"}`,
+A note looks like
+`{"id": "019ab5c4-1e2f-7a3b-9c4d-5e6f7a8b9c0d", "title": "Shopping", "body": "milk, bread"}`,
 and every error is `{"error": "what went wrong"}`.
 
 Replace everything in `Notes.punk` with the parts below, in order. The whole
@@ -25,15 +26,15 @@ app [Settings, main] { Platform: platform "server", Json: "json" }
 import Platform.Http exposing [Request, Response]
 import Platform.Config
 import Platform.Db
-import Platform.Random
+import Platform.Uuid
 import Platform.Log
 import Json.Decode as D
 import Json.Encode as E
 import Json.Value
 ```
 
-Each `import` of `Platform` is a capability: the database, random numbers
-(for the ids), the log. They are the only effects the app can do. It cannot
+Each `import` of `Platform` is a capability: the database, UUIDs (new ids
+need randomness and the clock), the log. They are the only effects the app can do. It cannot
 open files or make other connections, because the platform gives it no way
 to.
 
@@ -51,6 +52,10 @@ world: no settings yet.
 ```
 
 A `table` says what a row is (a record type) and which field is the key.
+The key is a `Uuid`: an id no other note has, made by the app without
+asking the database (`Uuid.generate!`), and stored as Postgres's `uuid`. A
+column is a `Str`, `Int`, `Float`, `Bool`, `Uuid`, `Posix` (a time, on the
+next page) or a `Maybe` of one.
 The four lines after it are the table's security policy, and all four are
 required: who may read, insert, update and delete rows. This API has no
 users yet, so `everyone` may do everything. With users, a policy is a
@@ -76,10 +81,10 @@ policies.
 
 ```sql
 -- punk version 1
--- table notes : id Str key, title Str, body Str
+-- table notes : id Uuid key, title Str, body Str
 ...
 CREATE TABLE notes (
-    id text PRIMARY KEY,
+    id uuid PRIMARY KEY,
     title text NOT NULL,
     body text NOT NULL
 );
@@ -128,10 +133,13 @@ changing the type cannot change it by accident.
 ```
 
 A `Route` is what a client can ask for, one tag per row of the table above.
-`ShowNote Str` carries the id from the path. `toRoute` reads it from the
+`ShowNote Uuid` carries the id from the path. `toRoute` reads it from the
 method and the parts of the path: a list pattern like `["notes", id]`
 matches a path of exactly two parts, the first `notes`, and names the
-second `id`. A method or path the API doesn't know is `Nothing`.
+second `id`. That `id` is text; `Uuid.fromString id` is `Just` the UUID, or
+`Nothing` when the text isn't one, so `Maybe.map ShowNote` makes a path
+like `/notes/n12` a 404 before any query runs. A method or path the API
+doesn't know is `Nothing` too.
 
 The `expect`s are tests, next to the code they test. Run them:
 
@@ -197,9 +205,9 @@ connects as `notes_app`. In another terminal:
 
 ```sh
 curl -s localhost:8080/notes -d '{"title": "Shopping", "body": "milk, bread"}'
-# {"id":"n5049...","title":"Shopping","body":"milk, bread"}
+# {"id":"019ab5c4-1e2f-7a3b-...","title":"Shopping","body":"milk, bread"}
 curl -s localhost:8080/notes
-# [{"id":"n5049...","title":"Shopping","body":"milk, bread"}]
+# [{"id":"019ab5c4-1e2f-7a3b-...","title":"Shopping","body":"milk, bread"}]
 curl -s localhost:8080/notes -d '{"title": "no body"}'
 # {"error":"the value: Expecting an OBJECT with a field named `body`, but got {\"title\":\"no body\"}"}
 ```

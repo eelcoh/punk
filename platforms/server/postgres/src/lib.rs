@@ -610,6 +610,8 @@ fn check_params(statement: &Statement, params: &[Value]) -> Result<(), DbError> 
             Value::Int(_) => matches!(*ty, Type::INT2 | Type::INT4 | Type::INT8),
             Value::Float(_) => matches!(*ty, Type::FLOAT4 | Type::FLOAT8),
             Value::Bool(_) => *ty == Type::BOOL,
+            Value::Time(_) => matches!(*ty, Type::TIMESTAMPTZ | Type::TIMESTAMP),
+            Value::Uuid(_) => *ty == Type::UUID,
         };
         if let Value::Int(n) = value {
             let fits_width = match *ty {
@@ -635,6 +637,8 @@ fn check_params(statement: &Statement, params: &[Value]) -> Result<(), DbError> 
                 Value::Int(_) => "an int (Sql.int)",
                 Value::Float(_) => "a float (Sql.float)",
                 Value::Bool(_) => "a bool (Sql.bool)",
+                Value::Time(_) => "a time (Sql.posix)",
+                Value::Uuid(_) => "a UUID (Sql.uuid)",
             };
             return Err(DbError::new(
                 "42804",
@@ -677,6 +681,10 @@ fn reader(name: &str, ty: &Type) -> Result<Reader, DbError> {
             }))
         },
         Type::FLOAT8 => |row, i| Ok(or_null(row.try_get::<_, Option<f64>>(i)?, Value::Float)),
+        Type::TIMESTAMPTZ | Type::TIMESTAMP => {
+            |row, i| Ok(or_null(row.try_get::<_, Option<Micros>>(i)?, |m| m.to_value()))
+        }
+        Type::UUID => |row, i| Ok(or_null(row.try_get::<_, Option<RawUuid>>(i)?, |u| Value::Uuid(u.0))),
         ref t if is_text(t) => {
             |row, i| Ok(or_null(row.try_get::<_, Option<String>>(i)?, Value::Text))
         }
@@ -684,7 +692,7 @@ fn reader(name: &str, ty: &Type) -> Result<Reader, DbError> {
             return Err(DbError::new(
                 "0A000",
                 format!(
-                    "column \"{name}\" is {}; punk reads bool, int, float and text columns, so convert it in the SQL (`{name}::text`, or `extract(epoch from {name})::int8` for a time)",
+                    "column \"{name}\" is {}; punk reads bool, int, float, text, timestamptz and uuid columns, so convert it in the SQL (`{name}::text`)",
                     ty.name()
                 ),
             ));
@@ -715,6 +723,19 @@ impl ToSql for Arg<'_> {
                 _ => x.to_sql(ty, out),
             },
             Value::Bool(b) => b.to_sql(ty, out),
+            Value::Time(ms) => {
+                // Postgres counts microseconds since 2000-01-01 UTC.
+                let micros = ms
+                    .checked_sub(PG_EPOCH_MILLIS)
+                    .and_then(|m| m.checked_mul(1000))
+                    .ok_or("the time is too far from 2000 for Postgres")?;
+                out.extend_from_slice(&micros.to_be_bytes());
+                Ok(IsNull::No)
+            }
+            Value::Uuid(bytes) => {
+                out.extend_from_slice(bytes);
+                Ok(IsNull::No)
+            }
         }
     }
 
@@ -723,6 +744,47 @@ impl ToSql for Arg<'_> {
     }
 
     to_sql_checked!();
+}
+
+/// 2000-01-01 UTC, where Postgres's times count from, in milliseconds since 1970.
+const PG_EPOCH_MILLIS: i64 = 946_684_800_000;
+
+/// A `timestamptz` or `timestamp` as Postgres sends it: microseconds since 2000-01-01 UTC.
+struct Micros(i64);
+
+impl Micros {
+    /// As punk's `Posix`: milliseconds since 1970, rounded down. Postgres's `infinity` and
+    /// `-infinity` become the largest and smallest time there is.
+    fn to_value(&self) -> Value {
+        match self.0 {
+            i64::MAX | i64::MIN => Value::Time(self.0),
+            m => Value::Time(m.div_euclid(1000) + PG_EPOCH_MILLIS),
+        }
+    }
+}
+
+impl<'a> postgres::types::FromSql<'a> for Micros {
+    fn from_sql(_: &Type, raw: &'a [u8]) -> Result<Self, Box<dyn Error + Sync + Send>> {
+        let bytes: [u8; 8] = raw.try_into().map_err(|_| "a time is 8 bytes")?;
+        Ok(Micros(i64::from_be_bytes(bytes)))
+    }
+
+    fn accepts(ty: &Type) -> bool {
+        matches!(*ty, Type::TIMESTAMPTZ | Type::TIMESTAMP)
+    }
+}
+
+/// A `uuid` as Postgres sends it: its 16 bytes.
+struct RawUuid([u8; 16]);
+
+impl<'a> postgres::types::FromSql<'a> for RawUuid {
+    fn from_sql(_: &Type, raw: &'a [u8]) -> Result<Self, Box<dyn Error + Sync + Send>> {
+        Ok(RawUuid(raw.try_into().map_err(|_| "a uuid is 16 bytes")?))
+    }
+
+    fn accepts(ty: &Type) -> bool {
+        *ty == Type::UUID
+    }
 }
 
 fn db_error(e: postgres::Error) -> DbError {

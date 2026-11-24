@@ -44,17 +44,19 @@ expect toRoute (Http.request Get "/hello") == Just Hello
 | `Http` | the types `Request` (`method`, `path`, `query`, `headers`, `body : List U8`) and `Response` (`status : U16`, `headers`, `body : List U8`); for routing `method : Request -> Method` (`Get`, `Head`, `Post`, `Put`, `Patch`, `Delete`, `Options`, `Other Str`), `segments : Request -> List Str` (the parts of the path, percent-decoded), `header : Str -> Request -> Maybe Str` (a header, the name in any case), and `request : Method -> Str -> Request` for tests |
 | `Kv` | `get! : Str => Result (Maybe Str) [KvErr Str]`, `put! key value`, `delete! key` (both `Result {} [KvErr Str]`) |
 | `Clock` | `now! : () => I64` (milliseconds since 1970) |
+| `Time` | as Elm's `Time`: the type `Posix` (a moment, in milliseconds since 1970 UTC), `now! : () => Posix`, `posixToMillis`, `millisToPosix`, `toIso8601 : Posix -> Str` (`"2026-11-24T12:14:20.123Z"`) and `fromIso8601 : Str -> Maybe Posix` (`Z` or an offset) |
+| `Uuid` | the type `Uuid`: `generate! : () => Uuid` (version 7: ids made later sort later), `toString` (lowercase `8-4-4-4-12`), `fromString : Str -> Maybe Uuid` (either case, with or without dashes) |
 | `Random` | `u64! : () => U64` |
 | `Config` | decoders for the app's settings, as Elm's `Json.Decode`: `text "BASE_URL"`, `int`, `bool`, `secret`; `withDefault`, `maybe`; `map` to `map6`, `succeed`, `fail`, `andThen`; `decode decoder [("NAME", "value")]` for tests (see Settings below) |
 | `Secret` | a password, key or token, from `Config.secret`: it can't become text (`Str.inspect` shows `<secret>`). `matches : Str -> Secret -> Bool` compares in constant time; `fromText` for tests |
 | `Log` | `info!`, `warn!`, `error! : Str => {}` |
 | `Postgres` | `rows! : Row.Decoder a -> Sql.Query => Result (List a) _`, `row!` (at most one row: `Maybe a`), `execute! : Sql.Query => Result U64 _` (rows changed) |
-| `Sql` | `query : Str -> List Sql.Param -> Sql.Query` (the SQL is a literal, rule P301), parameters `text`, `int`, `float`, `bool`, `null`, `nullable` |
+| `Sql` | `query : Str -> List Sql.Param -> Sql.Query` (the SQL is a literal, rule P301), parameters `text`, `int`, `float`, `bool`, `posix`, `uuid`, `null`, `nullable` |
 | `Db` | the query language: `table` declarations and pipelines (`links \|> Db.filter f \|> Db.first`), `run! : Db.Query a => Result a _`, `toSql` |
-| `Row` | decoders as Elm's `Json.Decode`: `field "url" Row.text`, columns `int`, `float`, `text`, `bool`, `nullable`; `map` to `map5`, `succeed`, `fail`, `andThen` |
+| `Row` | decoders as Elm's `Json.Decode`: `field "url" Row.text`, columns `int`, `float`, `text`, `bool`, `posix`, `uuid`, `nullable`, `mapColumn`; `map` to `map5`, `succeed`, `fail`, `andThen` |
 | `Mongo` | `collection "links"`, searches `find filter`, `sortBy`, `sortByDescending`, `drop`, `take`, run with `all! decoder`, `first! decoder`, `count!`; `insert! document`, `insertIfNew!`, `update! filter changes`, `delete! filter` |
-| `Bson` | values for documents, as Elm's `Json.Encode`: `text`, `int`, `float`, `bool`, `null`, `nullable`, `list`, `object [("url", Bson.text url)]`, `objectId`, `time` |
-| `Doc` | decoders for documents, as Elm's `Json.Decode`: `field "url" Doc.text`, `optionalField`, `int`, `float`, `text`, `bool`, `objectId`, `time`, `list`, `nullable`, `map` to `map5`, `andThen`, `oneOf`, `succeed`, `fail`, `decode` |
+| `Bson` | values for documents, as Elm's `Json.Encode`: `text`, `int`, `float`, `bool`, `null`, `nullable`, `list`, `object [("url", Bson.text url)]`, `objectId`, `time` (a `Posix`) |
+| `Doc` | decoders for documents, as Elm's `Json.Decode`: `field "url" Doc.text`, `optionalField`, `int`, `float`, `text`, `bool`, `objectId`, `time` (a `Posix`), `list`, `nullable`, `map` to `map5`, `andThen`, `oneOf`, `succeed`, `fail`, `decode` |
 | `Filter` | `equals`, `notEquals`, `lessThan`, `atMost`, `greaterThan`, `atLeast`, `oneOf`, `exists`, `missing` (each `"field" value`), `all [..]`, `any [..]`, `everything` |
 | `Update` | `set "field" value`, `unset "field"`, `increment "field" n` |
 
@@ -116,6 +118,27 @@ findLink = fn id ->
   `Db.map (fn owner, rows -> { owner, n = Db.count rows, total = Db.sum .amount rows })`,
   with `Db.count`, `Db.sum`, `Db.min`, `Db.max` and `Db.avg`. Grouping works
   on one table for now.
+- **Column types.** A column is a `Str`, `Int`, `Float`, `Bool`, `Posix`
+  (`Time`) or `Uuid`, or a `Maybe` of one when it can be empty. A type of
+  the program with one tag that holds one of these is a column too, and
+  the right one for ids:
+
+  ```
+  type LinkId = LinkId Uuid
+
+  type alias Link =
+      { id : LinkId
+      , owner : UserId
+      , created : Posix
+      }
+  ```
+
+  The database stores what it holds (`uuid`), so wrapping a column in a
+  type of its own needs no migration; in queries it only meets values of
+  its own type (`link.id == LinkId "x"`, not `link.id == "x"`, P403), so an
+  owner can't be taken for a link. A `Posix` column can be compared and
+  sorted on in a query; in a migration or policy a constant time is
+  `Time.millisToPosix 0`.
 - **Checked by the compiler, without a database.** A column the table
   doesn't have, a literal of the wrong type and a comparison of a `Str` with
   an `Int` are errors with a code (P403); a function the database can't run
@@ -153,8 +176,8 @@ findLink = fn id ->
 - **The schema comes from the program, with verified migrations.**
   `schema.sql` next to the app is a history of versions, which `punk check
   --schema app.punk` writes (`Str` is `text`, `Int` `bigint`, `Float`
-  `double precision`, `Bool` `boolean`, `Maybe` nullable, the key `PRIMARY
-  KEY`). Each version records the tables as they were. When the tables in
+  `double precision`, `Bool` `boolean`, `Posix` `timestamptz`, `Uuid`
+  `uuid`, `Maybe` nullable, the key `PRIMARY KEY`). Each version records the tables as they were. When the tables in
   the program differ from the last version, the program doesn't compile
   (P405) until `punk check --schema` has added a version. A new table, a new
   `Maybe` column or a new policy needs nothing else; any other change of a
@@ -218,8 +241,9 @@ resolve! = fn id ->
 - **Typed both ways.** The host prepares the SQL and checks each parameter
   against the type the statement wants (`Sql.int` for an `integer`, an `Int`
   that doesn't fit an `int4` is an error, not a wrapped number). A column is
-  read as bool, int (`int2/4/8`), float (`float4/8`) or text (`text`,
-  `varchar`, `char`, `name`); for any other type the error says how to
+  read as bool, int (`int2/4/8`), float (`float4/8`), text (`text`,
+  `varchar`, `char`, `name`), time (`timestamptz`, `timestamp` as UTC) or
+  uuid; for any other type the error says how to
   convert it in the SQL (`created::text`). The decoder then checks each
   column's kind, so a row that doesn't fit is `RowErr "column \"created\":
   expected an int, got text"`, not a wrong value.

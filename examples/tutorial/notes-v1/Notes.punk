@@ -3,7 +3,7 @@ app [Settings, main] { Platform: platform "server", Json: "json" }
 import Platform.Http exposing [Request, Response]
 import Platform.Config
 import Platform.Db
-import Platform.Random
+import Platform.Uuid
 import Platform.Log
 import Json.Decode as D
 import Json.Encode as E
@@ -31,7 +31,7 @@ type alias Settings =
 
 -- ANCHOR: table
 type alias Note =
-    { id : Str
+    { id : Uuid
     , title : Str
     , body : Str
     }
@@ -54,13 +54,13 @@ allNotes =
         |> Db.sortBy (fn note -> note.title)
         |> Db.all
 
-findNote : Str -> Db.Query (Maybe Note)
+findNote : Uuid -> Db.Query (Maybe Note)
 findNote = fn id ->
     notes
         |> Db.filter (fn note -> note.id == id)
         |> Db.first
 
-removeNote : Str -> Db.Query Int
+removeNote : Uuid -> Db.Query Int
 removeNote = fn id ->
     notes
         |> Db.filter (fn note -> note.id == id)
@@ -85,7 +85,7 @@ newNote =
 encodeNote : Note -> Value
 encodeNote = fn note ->
     E.object
-        [ ("id", E.string note.id)
+        [ ("id", E.string (Uuid.toString note.id))
         , ("title", E.string note.title)
         , ("body", E.string note.body)
         ]
@@ -98,8 +98,8 @@ encodeNote = fn note ->
 type Route
     = AllNotes
     | CreateNote
-    | ShowNote Str
-    | RemoveNote Str
+    | ShowNote Uuid
+    | RemoveNote Uuid
 
 -- The route of a request, from its method and the parts of its path;
 -- `Nothing` when the API has no such route.
@@ -108,21 +108,27 @@ toRoute = fn req ->
     case (Http.method req, Http.segments req) of
         (Get, ["notes"]) -> Just AllNotes
         (Post, ["notes"]) -> Just CreateNote
-        (Get, ["notes", id]) -> Just (ShowNote id)
-        (Delete, ["notes", id]) -> Just (RemoveNote id)
+        (Get, ["notes", id]) -> Maybe.map ShowNote (Uuid.fromString id)
+        (Delete, ["notes", id]) -> Maybe.map RemoveNote (Uuid.fromString id)
         _ -> Nothing
 
 expect toRoute (Http.request Get "/notes") == Just AllNotes
 
 expect toRoute (Http.request Post "/notes/") == Just CreateNote
 
-expect toRoute (Http.request Get "/notes/n12") == Just (ShowNote "n12")
+expect
+    toRoute (Http.request Get "/notes/0190c3a5-7b1e-7cc0-8a3b-2f1e7d6c5b4a")
+        == Maybe.map ShowNote (Uuid.fromString "0190c3a5-7b1e-7cc0-8a3b-2f1e7d6c5b4a")
 
-expect toRoute (Http.request Delete "/notes/n12") == Just (RemoveNote "n12")
+expect
+    toRoute (Http.request Delete "/notes/0190c3a5-7b1e-7cc0-8a3b-2f1e7d6c5b4a")
+        == Maybe.map RemoveNote (Uuid.fromString "0190c3a5-7b1e-7cc0-8a3b-2f1e7d6c5b4a")
 
-expect toRoute (Http.request Put "/notes/n12") == Nothing
+expect toRoute (Http.request Get "/notes/n12") == Nothing
 
-expect toRoute (Http.request Get "/notes/n12/comments") == Nothing
+expect toRoute (Http.request Put "/notes/0190c3a5-7b1e-7cc0-8a3b-2f1e7d6c5b4a") == Nothing
+
+expect toRoute (Http.request Get "/notes/0190c3a5-7b1e-7cc0-8a3b-2f1e7d6c5b4a/comments") == Nothing
 
 -- ANCHOR_END: route-type
 
@@ -160,21 +166,22 @@ create! = fn body ->
     case decodeBody newNote body of
         Err problem -> Ok (problemJson 400 problem)
         Ok new ->
-            note = { id = "n${U64.toStr (Random.u64! ())}", title = new.title, body = new.body }
+            note =
+                { id = Uuid.generate! (), title = new.title, body = new.body }
             _ = try Db.run! (Db.insert note notes)
             Ok (json 201 (encodeNote note))
 
-show! : Str => Result Response _
+show! : Uuid => Result Response _
 show! = fn id ->
     case try Db.run! (findNote id) of
-        Nothing -> Ok (problemJson 404 "no note ${id}")
+        Nothing -> Ok (problemJson 404 "no note ${Uuid.toString id}")
         Just note -> Ok (json 200 (encodeNote note))
 
-remove! : Str => Result Response _
+remove! : Uuid => Result Response _
 remove! = fn id ->
     count = try Db.run! (removeNote id)
     if count == 0 then
-        Ok (problemJson 404 "no note ${id}")
+        Ok (problemJson 404 "no note ${Uuid.toString id}")
     else
         Ok { status = 204, headers = [], body = [] }
 
@@ -213,7 +220,13 @@ expect
     decodeBody newNote (Str.toUtf8 "{\"title\": \"Milk\"}")
         == Err "the value: Expecting an OBJECT with a field named `body`, but got {\"title\":\"Milk\"}"
 
+-- A note for the tests: its id is a UUID, read from its text.
+milk : Maybe Note
+milk =
+    Uuid.fromString "0190c3a5-7b1e-7cc0-8a3b-2f1e7d6c5b4a"
+        |> Maybe.map (fn id -> { id, title = "Milk", body = "2 litres" })
+
 expect
-    E.encode 0 (encodeNote { id = "n1", title = "Milk", body = "2 litres" })
-        == "{\"id\":\"n1\",\"title\":\"Milk\",\"body\":\"2 litres\"}"
+    Maybe.map (fn note -> E.encode 0 (encodeNote note)) milk
+        == Just "{\"id\":\"0190c3a5-7b1e-7cc0-8a3b-2f1e7d6c5b4a\",\"title\":\"Milk\",\"body\":\"2 litres\"}"
 -- ANCHOR_END: tests

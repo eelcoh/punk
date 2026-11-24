@@ -1,6 +1,8 @@
 import Sql
 import Row
 import Postgres
+import Time
+import Uuid
 
 ## The query language of punk (roadmap B1): queries on a `table` that punk
 ## declares, written as pipelines,
@@ -130,6 +132,17 @@ Db := [].{
     read_bool : Row.Column(Bool)
     read_bool = Row.bool
 
+    read_posix : Row.Column(Time.Posix)
+    read_posix = Row.posix
+
+    read_uuid : Row.Column(Uuid)
+    read_uuid = Row.uuid
+
+    ## A column of a type of the program that wraps one of the above
+    ## (`type LinkId = LinkId Str`): punk writes `|v| LinkId(v)` for `wrap`.
+    read_wrap : Row.Column(a), (a -> b) -> Row.Column(b)
+    read_wrap = |column, wrap| Row.map_column(column, wrap)
+
     read_nullable : Row.Column(a) -> Row.Column([Just(a), Nothing])
     read_nullable = |column| Row.nullable(column)
 
@@ -156,6 +169,18 @@ Db := [].{
 
     param_bool : Bool -> Sql.Param
     param_bool = |value| Sql.bool(value)
+
+    param_posix : Time.Posix -> Sql.Param
+    param_posix = |value| Sql.posix(value)
+
+    param_uuid : Uuid -> Sql.Param
+    param_uuid = |value| Sql.uuid(value)
+
+    setting_posix : Str, Time.Posix -> (Str, Str)
+    setting_posix = |name, value| (name, Time.to_iso8601(value))
+
+    setting_uuid : Str, Uuid -> (Str, Str)
+    setting_uuid = |name, value| (name, Uuid.to_string(value))
 
     param_nullable : [Just(a), Nothing], (a -> Sql.Param) -> Sql.Param
     param_nullable = |maybe, to_param| Sql.nullable(maybe, to_param)

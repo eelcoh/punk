@@ -37,9 +37,17 @@ main =
 type alias Settings =
     {}
 
+-- Who a user is: the text of the header `x-user`. A type of its own, so a
+-- note's id or body can't be taken for it. In the database it is the text
+-- it holds.
+type UserId = UserId Str
+
+userIdText : UserId -> Str
+userIdText = fn (UserId text) -> text
+
 type alias Note =
     { id : Str
-    , owner : Str
+    , owner : UserId
     , body : Str
     , public : Bool
     , pinned : Bool
@@ -59,7 +67,7 @@ table notes : Note
 -- once schema.sql has a version, the migrate that made it goes.
 
 type alias Person =
-    { id : Str
+    { id : UserId
     , name : Str
     }
 
@@ -72,7 +80,7 @@ table people : Person
     delete nobody
 
 type alias User =
-    { id : Str
+    { id : UserId
     }
 
 -- Every note: the policy leaves out the ones the user may not read.
@@ -93,13 +101,13 @@ pin = fn id ->
         |> Db.update (fn note -> { note | pinned = True })
 
 -- The pins of the user's notes go: `pinOnly!` runs it before `pin`.
-unpinAll : Str -> Db.Query Int
+unpinAll : UserId -> Db.Query Int
 unpinAll = fn owner ->
     notes
         |> Db.filter (fn note -> note.owner == owner && note.pinned)
         |> Db.update (fn note -> { note | pinned = False })
 
-rename : Str -> Str -> Db.Query Int
+rename : UserId -> Str -> Db.Query Int
 rename = fn id, newName ->
     people
         |> Db.filter (fn person -> person.id == id)
@@ -133,7 +141,7 @@ allPublicNotes =
         |> Db.all
 
 -- The writers of public notes, each with how many and the first by text.
-writers : Db.Query (List { owner : Str, count : Int, first : Str })
+writers : Db.Query (List { owner : UserId, count : Int, first : Str })
 writers =
     notes
         |> Db.filter .public
@@ -153,7 +161,7 @@ remove = fn id ->
 
 handle! : Settings -> Request => Response
 handle! = fn _, req ->
-    user = { id = header "x-user" req }
+    user = { id = UserId (header "x-user" req) }
     case route! user req of
         Ok response -> response
         Err (PgErr problem) ->
@@ -319,6 +327,6 @@ listWriters! = fn user ->
     found = try Db.runAs! user writers
     lines =
         found
-            |> List.map (fn w -> "${w.owner} ${String.fromInt w.count} ${w.first}\n")
+            |> List.map (fn w -> "${userIdText w.owner} ${String.fromInt w.count} ${w.first}\n")
             |> Str.joinWith ""
     Ok (text 200 lines)

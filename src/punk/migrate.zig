@@ -257,6 +257,8 @@ fn baseOf(n: []const u8) ?ColType.Base {
     if (std.mem.eql(u8, n, "Int")) return .int;
     if (std.mem.eql(u8, n, "Float")) return .float;
     if (std.mem.eql(u8, n, "Bool")) return .bool;
+    if (std.mem.eql(u8, n, "Posix")) return .posix;
+    if (std.mem.eql(u8, n, "Uuid")) return .uuid;
     return null;
 }
 
@@ -264,7 +266,7 @@ fn snapshotLines(a: Allocator, out: *std.ArrayList(u8), t: *const Table) Allocat
     try out.print(a, "-- table {s} : ", .{t.decl.name});
     for (t.columns, 0..) |c, i| {
         if (i > 0) try out.appendSlice(a, ", ");
-        try out.print(a, "{s} {s}", .{ c.name, try c.ty.name(a) });
+        try out.print(a, "{s} {s}", .{ c.name, try c.ty.storage().name(a) });
         if (t.key != null and t.key.? == i) try out.appendSlice(a, " key");
     }
     try out.append(a, '\n');
@@ -291,7 +293,7 @@ fn tableChange(e: *Emitter, t: *const Table, snap: *const Snap, mig: ?MigrateDec
         if (!optEql(key_now, snap.key)) break :blk false;
         for (t.columns) |c| {
             const old = snap.column(c.name) orelse break :blk false;
-            if (!old.ty.eql(c.ty)) break :blk false;
+            if (!old.ty.eql(c.ty.storage())) break :blk false;
         }
         break :blk true;
     };
@@ -310,7 +312,7 @@ fn tableChange(e: *Emitter, t: *const Table, snap: *const Snap, mig: ?MigrateDec
     const only_added = mig == null and optEql(key_now, snap.key) and blk: {
         for (snap.columns) |old| {
             const c = t.column(old.name) orelse break :blk false;
-            if (!c.ty.eql(old.ty)) break :blk false;
+            if (!c.ty.storage().eql(old.ty)) break :blk false;
         }
         for (t.columns) |c| if (snap.column(c.name) == null and !c.ty.nullable) break :blk false;
         break :blk true;
@@ -336,7 +338,7 @@ fn describeChange(a: Allocator, t: *const Table, snap: *const Snap) Allocator.Er
     var out: std.ArrayList(u8) = .empty;
     for (t.columns) |c| {
         if (snap.column(c.name)) |old| {
-            if (!old.ty.eql(c.ty)) try sep(a, &out, try std.fmt.allocPrint(a, "{s} is {s}, was {s}", .{ c.name, try c.ty.an(a), try old.ty.an(a) }));
+            if (!old.ty.eql(c.ty.storage())) try sep(a, &out, try std.fmt.allocPrint(a, "{s} is {s}, was {s}", .{ c.name, try c.ty.an(a), try old.ty.an(a) }));
         } else try sep(a, &out, try std.fmt.allocPrint(a, "{s} added", .{c.name}));
     }
     for (snap.columns) |old| if (t.column(old.name) == null) try sep(a, &out, try std.fmt.allocPrint(a, "{s} removed", .{old.name}));

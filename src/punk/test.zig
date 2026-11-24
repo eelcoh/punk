@@ -1635,6 +1635,108 @@ test "queries: keywords as names, and the schema" {
     , (try punk.schema(arena.allocator(), src, null, &diag)).sql);
 }
 
+test "queries: own types, Posix and Uuid as columns" {
+    const src =
+        \\app [main!] { pf: platform "p.roc" }
+        \\
+        \\import pf.Db
+        \\import pf.Time exposing [Posix]
+        \\import pf.Uuid exposing [Uuid]
+        \\
+        \\type NoteId = NoteId Uuid
+        \\
+        \\type Owner = Owner Str
+        \\
+        \\type alias Note =
+        \\    { id : NoteId
+        \\    , owner : Owner
+        \\    , created : Posix
+        \\    , ref : Maybe Uuid
+        \\    , editor : Maybe Owner
+        \\    }
+        \\
+        \\table notes : Note
+        \\    key id
+        \\    read fn user, note -> note.owner == user.name || note.owner == "admin"
+        \\    insert everyone
+        \\    update nobody
+        \\    delete nobody
+        \\
+        \\find = fn id -> notes |> Db.filter (fn n -> n.id == id) |> Db.first
+        \\
+        \\since = fn t, e -> notes |> Db.filter (fn n -> n.created > t && n.editor == e) |> Db.sortByDescending .created |> Db.map .owner |> Db.all
+        \\
+        \\add = fn id -> Db.insert { id = NoteId id, owner = Owner "a", created = Time.millisToPosix 0, ref = Nothing, editor = Nothing } notes
+        \\
+        \\mine = fn u -> Db.runAs! u (notes |> Db.all)
+        \\
+    ;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var diag: punk.Diagnostic = .{};
+    const out = punk.translate(arena.allocator(), src, &diag) catch |err| {
+        std.debug.print("error at {d}:{d}: {s}\n", .{ diag.line, diag.col, diag.message });
+        return err;
+    };
+    const has = struct {
+        fn f(o: []const u8, part: []const u8) !void {
+            if (std.mem.find(u8, o, part) == null) {
+                std.debug.print("missing:\n{s}\nin:\n{s}\n", .{ part, o });
+                return error.TestUnexpectedResult;
+            }
+        }
+    }.f;
+    // A value of an own type goes in as the value it holds, and comes out
+    // wrapped again.
+    try has(out, "find = |id| Db.first_row([Db.param_uuid(match id { NoteId(punk_w) => punk_w })], \"SELECT id, owner, created, ref, editor FROM notes WHERE id = $1 LIMIT 1\", Db.field(Db.read_wrap(Db.read_uuid, |punk_w| NoteId(punk_w)), \"id\", |punk_c1| Db.field(Db.read_wrap(Db.read_text, |punk_w| Owner(punk_w)), \"owner\", |punk_c2| Db.field(Db.read_posix, \"created\", |punk_c3| Db.field(Db.read_nullable(Db.read_uuid), \"ref\", |punk_c4| Db.field(Db.read_nullable(Db.read_wrap(Db.read_text, |punk_w| Owner(punk_w))), \"editor\", |punk_c5| Db.done({ id: punk_c1, owner: punk_c2, created: punk_c3, ref: punk_c4, editor: punk_c5 }))))))");
+    try has(out, "since = |t, e| Db.all_rows([Db.param_posix(t), Db.param_nullable(e, |punk_v| Db.param_text(match punk_v { Owner(punk_w) => punk_w }))], \"SELECT owner FROM notes WHERE created > $1 AND editor IS NOT DISTINCT FROM $2 ORDER BY created DESC\", Db.field(Db.read_wrap(Db.read_text, |punk_w| Owner(punk_w)), \"owner\", Db.done))");
+    try has(out, "Db.changes([Db.param_uuid(match NoteId(id) { NoteId(punk_w) => punk_w }), Db.param_text(match Owner(\"a\") { Owner(punk_w) => punk_w }), Db.param_posix(Time.millis_to_posix(0)), Db.param_nullable(Nothing, Db.param_uuid), Db.param_nullable(Nothing, |punk_v| Db.param_text(match punk_v { Owner(punk_w) => punk_w }))], \"INSERT INTO notes (id, owner, created, ref, editor) VALUES ($1, $2, $3, $4, $5)\")");
+    // The user's field has the type of the column it meets.
+    try has(out, "Db.run_as!([Db.setting_text(\"punk.user_name\", match punk_user6.name { Owner(punk_w) => punk_w })]");
+    // The database stores what the own type holds.
+    const schema = (try punk.schema(arena.allocator(), src, null, &diag)).sql;
+    try has(schema, "-- table notes : id Uuid key, owner Str, created Posix, ref Maybe Uuid, editor Maybe Str\n");
+    try has(schema,
+        \\CREATE TABLE notes (
+        \\    id uuid PRIMARY KEY,
+        \\    owner text NOT NULL,
+        \\    created timestamptz NOT NULL,
+        \\    ref uuid,
+        \\    editor text
+        \\);
+    );
+    try has(schema, "CREATE POLICY notes_read ON notes FOR SELECT USING (owner = NULLIF(current_setting('punk.user_name', true), '') OR owner = 'admin');");
+}
+
+test "rules: own types as columns (P403)" {
+    const head =
+        \\app [main!] { pf: platform "p.roc" }
+        \\
+        \\import pf.Db
+        \\
+        \\type LinkId = LinkId Str
+        \\
+        \\type alias Link =
+        \\    { id : LinkId
+        \\    , hits : Int
+        \\    }
+        \\
+        \\table links : Link
+        \\    key id
+        \\    read everyone
+        \\    insert everyone
+        \\    update everyone
+        \\    delete nobody
+        \\
+        \\
+    ;
+    // A text is not a LinkId: wrap it.
+    try checkError(head ++ "q = links |> Db.filter (fn l -> l.id == \"x\") |> Db.all\n", 19, "give a LinkId (LinkId \"x\")");
+    try checkRule(head ++ "q = links |> Db.filter (fn l -> l.id == \"x\") |> Db.all\n", 19, 41, .query_type);
+    // Own types have no arithmetic and don't meet other types.
+    try checkRule(head ++ "q = links |> Db.filter (fn l -> l.id == l.hits) |> Db.all\n", 19, 38, .query_type);
+}
+
 const policy_head =
     \\app [main!] { pf: platform "p.roc" }
     \\
@@ -1808,6 +1910,38 @@ const links_v2 =
     \\    delete nobody
     \\
 ;
+
+test "migrations: a time column, and an own type that holds what was there" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const v1 = try schemaOf(arena, links_v1, null);
+    // `id` becomes a LinkId that holds a Str: the database doesn't see it.
+    const v2 = try schemaOf(arena,
+        \\type LinkId = LinkId Str
+        \\
+        \\type alias Link =
+        \\    { id : LinkId
+        \\    , url : Str
+        \\    , created : Int
+        \\    , note : Str
+        \\    , seen : Posix
+        \\    }
+        \\
+        \\table links : Link
+        \\    key id
+        \\    read everyone
+        \\    insert everyone
+        \\    update nobody
+        \\    delete nobody
+        \\
+        \\migrate links
+        \\    fn old -> { old | seen = Time.millisToPosix 0 }
+        \\
+    , v1);
+    try std.testing.expect(std.mem.find(u8, v2[v1.len..], "-- table links : id Str key, url Str, created Int, note Str, seen Posix\n") != null);
+    try std.testing.expect(std.mem.find(u8, v2[v1.len..], "ALTER TABLE links ADD COLUMN seen timestamptz;\nUPDATE links SET seen = to_timestamp(0::double precision / 1000);\n") != null);
+}
 
 test "migrations: a version for each change of the tables" {
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);

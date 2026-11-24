@@ -14,39 +14,43 @@ The app after this page and the next is
 
 ## Change the table
 
-Add `created` to the row, in milliseconds since 1970 (as Elm's
-`Time.posixToMillis`):
+Add `created` to the row: a `Posix`, a moment in time, as in Elm's `Time`.
+Postgres stores it as `timestamptz`:
 
 ```elm
 {{#include ../../../examples/tutorial/notes/Notes.punk:table}}
 ```
 
-`punk check Notes.punk` now finds every place that has to change with it. The
-note made in `create!` misses `created`, so give it the time, from the clock:
+`punk check Notes.punk` now finds every place that has to change with it.
+First it doesn't know `Posix`; import it with the rest of `Time`:
 
 ```elm
-import Platform.Clock
+import Platform.Time exposing [Posix]
 ```
+
+The note made in `create!` misses `created`, so give it the time, from the
+clock:
 
 ```elm
             note =
-                { id = "n${U64.toStr (Random.u64! ())}"
+                { id = Uuid.generate! ()
                 , title = new.title
                 , body = new.body
-                , created = Clock.now! ()
+                , created = Time.now! ()
                 }
 ```
 
-Put it in the JSON:
+Put it in the JSON, as ISO 8601 text in UTC (`"2026-11-24T12:14:20.123Z"`),
+which is what clients of a JSON API expect:
 
 ```elm
 encodeNote : Note -> Value
 encodeNote = fn note ->
     E.object
-        [ ("id", E.string note.id)
+        [ ("id", E.string (Uuid.toString note.id))
         , ("title", E.string note.title)
         , ("body", E.string note.body)
-        , ("created", E.int note.created)
+        , ("created", E.string (Time.toIso8601 note.created))
         ]
 ```
 
@@ -77,27 +81,27 @@ table notes : Note
     delete everyone
 
 migrate notes
-    fn old -> { old | created = 0 }
+    fn old -> { old | created = Time.millisToPosix 0 }
 ```
 
-The old notes get `created = 0`: the oldest possible. A migration runs in
+The old notes get `Time.millisToPosix 0`: 1970, older than any note. A migration runs in
 the database, like a query, so it can use the old row and constants, but
 not the clock. Now write version 2:
 
 ```sh
 punk check --schema Notes.punk
 # ./schema.sql: version 2:
-#   notes: created added, 0 for the rows there are
+#   notes: created added, to_timestamp(0::double precision / 1000) for the rows there are
 ```
 
 Read what it added to `schema.sql`:
 
 ```sql
 -- punk version 2
--- table notes : id Str key, title Str, body Str, created Int
+-- table notes : id Uuid key, title Str, body Str, created Posix
 ...
-ALTER TABLE notes ADD COLUMN created bigint;
-UPDATE notes SET created = 0;
+ALTER TABLE notes ADD COLUMN created timestamptz;
+UPDATE notes SET created = to_timestamp(0::double precision / 1000);
 ALTER TABLE notes ALTER COLUMN created SET NOT NULL;
 ...
 ```
@@ -128,11 +132,11 @@ one transaction. Two servers starting at once apply it only once.
 ```sh
 curl -s localhost:8080/notes -d '{"title": "Call Sam", "body": "about Friday"}'
 curl -s localhost:8080/notes
-# [{"id":"n...","title":"Call Sam","body":"about Friday","created":1795377600000},
-#  {"id":"n5049...","title":"Shopping","body":"milk, bread","created":0}]
+# [{"id":"019ab5d0-...","title":"Call Sam","body":"about Friday","created":"2026-11-24T12:20:00.000Z"},
+#  {"id":"019ab5c4-...","title":"Shopping","body":"milk, bread","created":"1970-01-01T00:00:00.000Z"}]
 ```
 
-The note from before the migration is still there, with `created` 0, at the
+The note from before the migration is still there, made in 1970, at the
 end.
 
 ## Test it
@@ -148,7 +152,7 @@ Then the tests of the whole app. `server/tests/spec.rs` sends requests to the ap
 `PUNK_TEST_POSTGRES` for each test. The tutorial's own
 [spec](https://github.com/eelcoh/punk/blob/main/examples/tutorial/notes/server/tests/spec.rs)
 has a test for each route, and one for this migration: it applies version 1,
-adds a note, applies version 2, and reads the note back with `created` 0.
+adds a note, applies version 2, and reads the note back, made in 1970.
 Replace the hello tests in yours with those, then:
 
 ```sh

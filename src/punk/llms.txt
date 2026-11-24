@@ -433,6 +433,13 @@ Kv.get! : Str => Result (Maybe Str) [KvErr Str]
 Kv.put! : Str -> Str => Result {} [KvErr Str]      -- key, value
 Kv.delete! : Str => Result {} [KvErr Str]
 Clock.now! : () => I64                              -- milliseconds since 1970
+Time.now! : () => Posix                             -- import Platform.Time exposing [Posix]
+Time.posixToMillis : Posix -> Int                   -- also Time.millisToPosix : Int -> Posix
+Time.toIso8601 : Posix -> Str                       -- "2026-11-24T12:14:20.123Z"
+Time.fromIso8601 : Str -> Maybe Posix               -- Z or an offset (+01:00); Nothing for anything else
+Uuid.generate! : () => Uuid                         -- import Platform.Uuid; version 7, ids made later sort later
+Uuid.toString : Uuid -> Str                         -- "019ab5c4-1e2f-7a3b-9c4d-5e6f7a8b9c0d"
+Uuid.fromString : Str -> Maybe Uuid                 -- either case, with or without the dashes
 Random.u64! : () => U64
 Log.info! : Str => {}                               -- also Log.warn!, Log.error!
 ```
@@ -476,11 +483,15 @@ the versions of the tables, which the wiring applies in order.
 
 ```
 import Platform.Db
+import Platform.Time exposing [Posix]
+import Platform.Uuid
+
+type LinkId = LinkId Uuid
 
 type alias Link =
-    { id : Str
+    { id : LinkId
     , url : Str
-    , created : Int
+    , created : Posix
     }
 
 table links : Link
@@ -490,14 +501,23 @@ table links : Link
     update nobody
     delete nobody
 
-findLink : Str -> Db.Query (Maybe Link)
+findLink : LinkId -> Db.Query (Maybe Link)
 findLink = fn id ->
     links
         |> Db.filter (fn link -> link.id == id)
         |> Db.first
 
 -- in an effect: case try Db.run! (findLink id) of ...
+-- a new one: Db.insert { id = LinkId (Uuid.generate! ()), url, created = Time.now! () } links
 ```
+
+A column is a `Str`, `Int`, `Float`, `Bool`, `Posix` (`timestamptz`) or
+`Uuid` (`uuid`), a `Maybe` of one (nullable), or a type of the program with
+one tag that holds one of these (`type LinkId = LinkId Uuid`). Give ids such
+a type: the database stores what it holds, and a query only compares it with
+the same type (`link.id == "x"` is P403). For JSON, `Time.toIso8601` and
+`Time.fromIso8601`, `Uuid.toString` and `Uuid.fromString` (a `Maybe`); route
+an id with `Maybe.map ShowLink (Uuid.fromString id)`.
 
 A policy can also be a function of the user and the row. It becomes a
 Postgres row-level security policy, so the database itself keeps to it, also
@@ -534,7 +554,8 @@ migrate links
 
 `createdAt = old.created` renames a column, another value is computed in the
 database for the rows there are (as in a query, without values from
-outside), and an old column the new row doesn't take is dropped.
+outside), and an old column the new row doesn't take is dropped. A constant time is
+`Time.millisToPosix 0`.
 
 ```
 Db.join : table -> (row -> row2 -> Bool) -> query -- JOIN ... ON; the steps after it take a row of each

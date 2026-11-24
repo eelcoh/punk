@@ -37,6 +37,40 @@ fn parameters_and_columns_have_their_types() {
 }
 
 #[test]
+fn times_and_uuids_have_their_types() {
+    let Some(db) = pool(
+        "time_uuid",
+        "CREATE TABLE t (at timestamptz, local timestamp, id uuid)",
+    ) else {
+        return;
+    };
+    let params = [
+        Value::Time(1_764_000_000_123),
+        Value::Time(-1),
+        Value::Uuid(*b"0123456789abcdef"),
+    ];
+    db.run("INSERT INTO t VALUES ($1, $2, $3)", &params).unwrap();
+    let rows = db.run("SELECT * FROM t", &[]).unwrap();
+    assert_eq!(rows.rows, vec![params.to_vec()]);
+    // What Postgres makes itself reads the same way.
+    let rows = db
+        .run(
+            "SELECT '2026-11-24T12:00:00.0015Z'::timestamptz AS at, '30313233-3435-3637-3839-616263646566'::uuid AS id",
+            &[],
+        )
+        .unwrap();
+    assert_eq!(
+        rows.rows,
+        vec![vec![Value::Time(1_795_521_600_001), Value::Uuid(*b"0123456789abcdef")]]
+    );
+    // Text is not a UUID.
+    let e = db
+        .run("SELECT * FROM t WHERE id = $1", &[Value::Text("x".into())])
+        .unwrap_err();
+    assert_eq!(e.code, "42804");
+}
+
+#[test]
 fn a_wrong_parameter_type_says_what_to_do() {
     let Some(db) = pool("wrong_param", "CREATE TABLE t (n integer)") else {
         return;
@@ -59,7 +93,7 @@ fn an_unknown_column_type_says_how_to_convert_it() {
     let Some(db) = pool("column_type", "") else {
         return;
     };
-    let e = db.run("SELECT now() AS created", &[]).unwrap_err();
+    let e = db.run("SELECT now()::date AS created", &[]).unwrap_err();
     assert_eq!(e.code, "0A000");
     assert!(e.message.contains("created::text"), "{}", e.message);
     let rows = db

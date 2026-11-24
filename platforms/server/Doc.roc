@@ -1,4 +1,5 @@
 import Bson
+import Time
 
 ## Reading Mongo documents, as Elm's `Json.Decode` reads JSON: a decoder says
 ## which fields a document has and what type each one is, and turns the
@@ -114,13 +115,13 @@ Doc := [].{
     object_id : Decoder(Str)
     object_id = leaf(7, "an object id", |s| Ok(s))
 
-    ## A date, in milliseconds since 1970.
-    time : Decoder(I64)
+    ## A date, as a `Posix`.
+    time : Decoder(Time.Posix)
     time = leaf(
         8,
         "a date",
         |s| match I64.from_str(s) {
-            Ok(n) => Ok(n)
+            Ok(n) => Ok(Time.millis_to_posix(n))
             Err(_) => Err("\"${s}\" is not a date")
         },
     )

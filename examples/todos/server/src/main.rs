@@ -7,6 +7,7 @@
 
 use ambit_lockdown::{Grant, Lockdown};
 use ambit_server_native::{Listen, OsRandom, StdClock};
+use punk_server::Settings;
 use punk_server_postgres::{Config, Owner, Postgres};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -38,7 +39,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .allow(&Grant::Listen(listen.addr.port()))
         .apply_or_warn("punk-todos")?;
 
-    let app = todos::init(StdClock::new(), OsRandom, database);
+    let settings = Settings::from_env(todos::SETTINGS);
+    let app = todos::init(StdClock::new(), OsRandom, database, settings)?;
     ambit_server_native::serve(app, listen)?;
     Ok(())
 }

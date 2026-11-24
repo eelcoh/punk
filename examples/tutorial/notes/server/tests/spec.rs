@@ -8,20 +8,43 @@ use std::time::{Duration, UNIX_EPOCH};
 use ambit_server::Handler;
 use ambit_server::http::StatusCode;
 use ambit_server_sim::{SeededRandom, SimClock, request};
+use punk_server::Settings;
 use punk_server_postgres::{Owner, testing};
 
 /// 2023-11-14 22:13:20 UTC, in milliseconds: the time of the notes the tests make.
 const NOW: i64 = 1_700_000_000_000;
 
+/// The API key of the tests: what `API_KEY` is set to.
+const KEY: &str = "test-key-7f3a";
+
 fn app(name: &str, schema: &str) -> Option<(impl Handler, Owner, SimClock)> {
     let (owner, db) = testing::database(&format!("notes_{name}"), schema)?;
     let clock = SimClock::at(UNIX_EPOCH + Duration::from_millis(NOW as u64));
-    let app = notes::init(clock.clone(), SeededRandom::new(1), db);
+    let settings = Settings::new().set("API_KEY", KEY);
+    let app =
+        notes::init(clock.clone(), SeededRandom::new(1), db, settings).expect("API_KEY is set");
     Some((app, owner, clock))
 }
 
+/// The request, with the API key.
 fn send(app: &impl Handler, method: &str, uri: &str, body: &str) -> (StatusCode, String) {
-    let response = app.handle(request(method, uri, body.as_bytes().to_vec()));
+    send_with(app, Some(&format!("Bearer {KEY}")), method, uri, body)
+}
+
+/// The request, with this `Authorization` header (or none).
+fn send_with(
+    app: &impl Handler,
+    authorization: Option<&str>,
+    method: &str,
+    uri: &str,
+    body: &str,
+) -> (StatusCode, String) {
+    let mut req = request(method, uri, body.as_bytes().to_vec());
+    if let Some(value) = authorization {
+        req.headers_mut()
+            .insert("authorization", value.parse().unwrap());
+    }
+    let response = app.handle(req);
     let status = response.status();
     (status, String::from_utf8(response.into_body()).unwrap())
 }
@@ -98,6 +121,54 @@ fn a_bad_body_is_a_400_that_says_why() {
     let (status, json) = send(&app, "POST", "/notes", r#"{"title": "no body"}"#);
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(json.starts_with(r#"{"error":"#), "{json}");
+}
+
+#[test]
+fn writing_needs_the_api_key() {
+    let Some((app, _owner, _)) = app("key", notes::SCHEMA) else {
+        return;
+    };
+    let note = r#"{"title": "Secret plan", "body": "none"}"#;
+    for authorization in [None, Some("Bearer wrong"), Some(KEY), Some("Bearer ")] {
+        let (status, json) = send_with(&app, authorization, "POST", "/notes", note);
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{authorization:?}");
+        assert_eq!(json, r#"{"error":"this needs the API key"}"#);
+    }
+    let id = id_of(&create(&app, "Kept", "safe"));
+    let uri = format!("/notes/{id}");
+    assert_eq!(
+        send_with(&app, None, "DELETE", &uri, "").0,
+        StatusCode::UNAUTHORIZED
+    );
+    // Reading needs no key, and the note is still there.
+    assert_eq!(send_with(&app, None, "GET", &uri, "").0, StatusCode::OK);
+    assert_eq!(
+        send_with(&app, None, "GET", "/notes", "").1,
+        format!(r#"[{{"id":"{id}","title":"Kept","body":"safe","created":{NOW}}}]"#)
+    );
+}
+
+#[test]
+fn the_app_does_not_start_without_a_key() {
+    let Some((_, db)) = testing::database("notes_nokey", notes::SCHEMA) else {
+        return;
+    };
+    let db = std::sync::Arc::new(db);
+    let clock = SimClock::at(UNIX_EPOCH);
+    let Err(bad) = notes::init(
+        clock.clone(),
+        SeededRandom::new(1),
+        db.clone(),
+        Settings::new(),
+    ) else {
+        panic!("the app started without API_KEY");
+    };
+    assert_eq!(bad.problems, ["API_KEY is missing"]);
+    let empty = Settings::new().set("API_KEY", "");
+    let Err(bad) = notes::init(clock, SeededRandom::new(1), db, empty) else {
+        panic!("the app started with an empty API_KEY");
+    };
+    assert_eq!(bad.problems, ["API_KEY is empty"]);
 }
 
 /// The migration of the tutorial: notes made before version 2 of `schema.sql` get `created` 0.

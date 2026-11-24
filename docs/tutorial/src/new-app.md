@@ -40,15 +40,23 @@ code .
 `Notes.punk` starts as a hello world:
 
 ```elm
-app [handle!] { Platform: platform "server", Json: "json" }
+app [Settings, main] { Platform: platform "server", Json: "json" }
 
 import Platform.Http exposing [Request, Response]
+import Platform.Config
 import Platform.Log
 import Json.Encode as E
 import Json.Value
 
-handle! : Request => Response
-handle! = fn req ->
+main =
+    { settings = Config.succeed {}, handle! = handle! }
+
+-- The app needs no settings.
+type alias Settings =
+    {}
+
+handle! : Settings -> Request => Response
+handle! = fn _, req ->
     Log.info! "${req.method} ${req.path}"
     case toRoute req of
         Just Hello -> json 200 (E.object [("hello", E.string "world")])
@@ -71,9 +79,13 @@ expect toRoute (Http.request Post "/hello") == Nothing
 ```
 
 The first line says that this is an app for the `server` platform, that it
-gives the platform one function, `handle!`, and that it uses the `json`
-package that comes with punk. The server calls `handle!` for each request.
-The `!` says that it does effects: here it only writes to the log.
+gives the platform its `Settings` and `main`, and that it uses the `json`
+package that comes with punk. `main` holds two things: `settings`, which
+says what the app needs from the server's settings (nothing yet:
+`Config.succeed {}`, more on that in [Settings and a secret](settings.md)),
+and `handle!`, which the server calls for each request, with the settings
+and the request. The `!` says that it does effects: here it only writes to
+the log.
 
 `handle!` doesn't look at the text of the path itself. `toRoute` turns the
 request into a `Route`, a type of your own with one tag per thing a client

@@ -42,6 +42,8 @@ cd server
 sh unikernel.sh
 ```
 
+(with `API_KEY` still set from [Settings and a secret](settings.md): the
+script gives the app the settings that `SETTINGS` in `src/lib.rs` names).
 The first build takes a few minutes: it also compiles the kernel. Then QEMU
 starts, the loader and the kernel say a few things, and then the app:
 
@@ -55,7 +57,8 @@ INFO notes::hermit: notes listens on http://0.0.0.0:8080
 From another terminal, the same API as before:
 
 ```sh
-curl -s localhost:8080/notes -d '{"title": "Unikernel", "body": "it boots"}'
+curl -s localhost:8080/notes -H "Authorization: Bearer $API_KEY" \
+    -d '{"title": "Unikernel", "body": "it boots"}'
 curl -s localhost:8080/notes
 ```
 
@@ -82,8 +85,9 @@ not `localhost` to the server, so without it the server would ask for TLS
 Mac anyway.
 
 A unikernel has no environment variables of its own, so `unikernel.sh`
-passes them on the kernel's command line (`env=DATABASE_URL=...`), and
-`src/hermit.rs` reads them with `std::env::var`, as `main.rs` does. Set
+passes them on the kernel's command line (`env=DATABASE_URL=...`, and
+`env=API_KEY=...` for the app's own settings), and `src/hermit.rs` reads them
+with `std::env::var`, as `main.rs` does. A value there can't contain a space. Set
 `DATABASE_URL` and `DATABASE_OWNER_URL` yourself for another database:
 
 ```sh

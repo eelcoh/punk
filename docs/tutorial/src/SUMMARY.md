@@ -8,6 +8,7 @@
 - [A new app](new-app.md)
 - [A JSON API for notes](notes-api.md)
 - [A migration](migration.md)
+- [Settings and a secret](settings.md)
 - [In a container](container.md)
 - [As a unikernel](unikernel.md)
 - [Next steps](next.md)

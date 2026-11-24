@@ -1,4 +1,4 @@
-app [handle!] { Platform: platform "server", Json: "json" }
+app [Settings, main] { Platform: platform "server" }
 
 import Platform.Http exposing [Request, Response]
 import Platform.Clock
@@ -6,7 +6,6 @@ import Platform.Random
 import Platform.Db
 import Platform.Config
 import Platform.Log
-import Json.Decode as D
 
 {-| A link shortener: ambit's `apps/shortener`, in punk, with its links in
 Postgres instead of a key-value store. The table and its queries are written
@@ -20,17 +19,29 @@ The app can only do what the platform hands it: a clock, randomness, a
 database, its configuration and a log. Which database is up to the wiring.
 -}
 
--- Configuration, from the wiring: `{"baseUrl": "https://s.test", "ttlSeconds": 3600}`
+main =
+    { settings = settings, handle! = handle! }
+
+-- The settings, from the wiring: `BASE_URL` (`https://s.test`) and
+-- `TTL_SECONDS` (3600 when it is missing).
 type alias Settings =
     { baseUrl : Str
     , ttlSeconds : Int
     }
 
-settings : D.Decoder Settings
+settings : Config.Decoder Settings
 settings =
-    D.map2 (fn baseUrl, ttlSeconds -> { baseUrl, ttlSeconds })
-        (D.field "baseUrl" D.string)
-        (D.field "ttlSeconds" D.int)
+    Config.map2 (fn baseUrl, ttlSeconds -> { baseUrl, ttlSeconds })
+        (Config.text "BASE_URL")
+        (Config.int "TTL_SECONDS" |> Config.withDefault 3600)
+
+expect
+    Config.decode settings [("BASE_URL", "https://s.test")]
+        == Ok { baseUrl = "https://s.test", ttlSeconds = 3600 }
+
+expect
+    Config.decode settings [("TTL_SECONDS", "soon")]
+        == Err "BASE_URL is missing\nTTL_SECONDS should be a whole number, it is \"soon\""
 
 -- A stored link: a row of the table `links`.
 type alias Link =
@@ -68,27 +79,22 @@ idLength = 7
 idAttempts : Int
 idAttempts = 5
 
-handle! : Request => Response
-handle! = fn req ->
-    case D.decodeString settings (Config.text! ()) of
-        Err problem ->
-            Log.error! "bad configuration: ${D.errorToString problem}"
-            text 500 "bad configuration\n"
-        Ok config ->
-            id = Str.dropPrefix "/" req.path
-            result =
-                case req.method of
-                    "POST" if req.path == "/links" -> create! config req.body
-                    "GET" if isId id -> resolve! config id
-                    _ -> Ok (text 404 "not found\n")
-            case result of
-                Ok response -> response
-                Err (PgErr problem) ->
-                    Log.error! "storage failed (${problem.code}): ${problem.message}"
-                    text 503 "storage unavailable\n"
-                Err (RowErr problem) ->
-                    Log.error! "a stored link doesn't fit: ${problem}"
-                    text 500 "internal error\n"
+handle! : Settings -> Request => Response
+handle! = fn config, req ->
+    id = Str.dropPrefix "/" req.path
+    result =
+        case req.method of
+            "POST" if req.path == "/links" -> create! config req.body
+            "GET" if isId id -> resolve! config id
+            _ -> Ok (text 404 "not found\n")
+    case result of
+        Ok response -> response
+        Err (PgErr problem) ->
+            Log.error! "storage failed (${problem.code}): ${problem.message}"
+            text 503 "storage unavailable\n"
+        Err (RowErr problem) ->
+            Log.error! "a stored link doesn't fit: ${problem}"
+            text 500 "internal error\n"
 
 create! : Settings -> List U8 => Result Response _
 create! = fn config, body ->

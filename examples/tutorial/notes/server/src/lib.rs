@@ -2,14 +2,23 @@
 
 use ambit_caps::{Clock, Random};
 use ambit_server::Handler;
-use punk_server::Database;
+use punk_server::{BadSettings, Database, Settings};
 
 /// The tables the app needs; the wiring applies them as the tables' owner.
 pub const SCHEMA: &str = include_str!("../../schema.sql");
 
-/// The app's capabilities: a clock, randomness, and a database.
-pub fn init(clock: impl Clock, random: impl Random, database: impl Database) -> impl Handler {
-    punk_server::App::new(clock, random, NoKv, "{}".to_owned()).with_database(database)
+/// The names of the settings the app reads (its `settings` decoder in `../Notes.punk`). The wiring
+/// takes these from the environment, and no others.
+pub const SETTINGS: &[&str] = &["API_KEY"];
+
+/// The app's capabilities: a clock, randomness, a database, and its settings.
+pub fn init(
+    clock: impl Clock,
+    random: impl Random,
+    database: impl Database,
+    settings: Settings,
+) -> Result<impl Handler, BadSettings> {
+    Ok(punk_server::App::new(clock, random, NoKv, settings)?.with_database(database))
 }
 
 /// The key-value store of an app that has a database instead.

@@ -2,7 +2,9 @@
 
 This is an HTTP server in [punk-lang](https://github.com/eelcoh/punk) on the
 `server` platform (`platform "server"`). Its entry point is
-`handle! : Request => Response`. Read the language reference first:
+`main = { settings = settings, handle! = handle! }`: a `Config.Decoder` for
+the app's `Settings`, and `handle! : Settings -> Request => Response`. Read
+the language reference first:
 `~/.punk/current/share/punk/llms.txt` (or `src/punk/llms.txt` in the punk
 repository).
 
@@ -21,6 +23,11 @@ repository).
 - Every table has all four policy lines. Changing a policy is a security
   change, so say so in the PR.
 - SQL only through the query language, or `Sql.query` with parameters.
+- Settings come from the `settings` decoder, never from a constant in the
+  code. A password, key or token is a `Secret` (`Config.secret "API_KEY"`),
+  never a `Str`, and compared with `Secret.matches`. A new setting also
+  needs its name in `SETTINGS` in `server/src/lib.rs`: say so in the PR,
+  because that list is what the server lets the app read.
 
 ## Work loop
 
@@ -37,5 +44,5 @@ Skills: `punk-check-loop`, `punk-endpoint` (a new route), `punk-migration`
 ## What the app can do
 
 Only what the `server` platform gives and the app imports: `Http`, `Db`
-or `Postgres`, `Mongo`, `Kv`, `Clock`, `Random`, `Config`, `Log`. The
+or `Postgres`, `Mongo`, `Kv`, `Clock`, `Random`, `Config`, `Secret`, `Log`. The
 Rust crate in `server/` decides which of them the app really gets.

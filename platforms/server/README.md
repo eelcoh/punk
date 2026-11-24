@@ -6,13 +6,23 @@ ambit owns the listener, the threads and the limits (body size, timeouts, a
 full queue answers 503), and calls the punk app once per request.
 
 ```
-app [handle!] { Platform: platform "server", Json: "json" }
+app [Settings, main] { Platform: platform "server" }
 
 import Platform.Http exposing [Request, Response]
-import Platform.Kv
+import Platform.Config
 
-handle! : Request => Response
-handle! = fn req ->
+main =
+    { settings = settings, handle! = handle! }
+
+type alias Settings =
+    {}
+
+settings : Config.Decoder Settings
+settings =
+    Config.succeed {}
+
+handle! : Settings -> Request => Response
+handle! = fn _, req ->
     case toRoute req of
         Just Hello -> { status = 200, headers = [], body = Str.toUtf8 "hello\n" }
         Nothing -> { status = 404, headers = [], body = [] }
@@ -31,11 +41,12 @@ expect toRoute (Http.request Get "/hello") == Just Hello
 
 | Module | Functions |
 |--------|-----------|
-| `Http` | the types `Request` (`method`, `path`, `query`, `headers`, `body : List U8`) and `Response` (`status : U16`, `headers`, `body : List U8`); for routing `method : Request -> Method` (`Get`, `Head`, `Post`, `Put`, `Patch`, `Delete`, `Options`, `Other Str`), `segments : Request -> List Str` (the parts of the path, percent-decoded), and `request : Method -> Str -> Request` for tests |
+| `Http` | the types `Request` (`method`, `path`, `query`, `headers`, `body : List U8`) and `Response` (`status : U16`, `headers`, `body : List U8`); for routing `method : Request -> Method` (`Get`, `Head`, `Post`, `Put`, `Patch`, `Delete`, `Options`, `Other Str`), `segments : Request -> List Str` (the parts of the path, percent-decoded), `header : Str -> Request -> Maybe Str` (a header, the name in any case), and `request : Method -> Str -> Request` for tests |
 | `Kv` | `get! : Str => Result (Maybe Str) [KvErr Str]`, `put! key value`, `delete! key` (both `Result {} [KvErr Str]`) |
 | `Clock` | `now! : () => I64` (milliseconds since 1970) |
 | `Random` | `u64! : () => U64` |
-| `Config` | `text! : () => Str`, the configuration the wiring gives the app (JSON, read with `json.Decode`) |
+| `Config` | decoders for the app's settings, as Elm's `Json.Decode`: `text "BASE_URL"`, `int`, `bool`, `secret`; `withDefault`, `maybe`; `map` to `map6`, `succeed`, `fail`, `andThen`; `decode decoder [("NAME", "value")]` for tests (see Settings below) |
+| `Secret` | a password, key or token, from `Config.secret`: it can't become text (`Str.inspect` shows `<secret>`). `matches : Str -> Secret -> Bool` compares in constant time; `fromText` for tests |
 | `Log` | `info!`, `warn!`, `error! : Str => {}` |
 | `Postgres` | `rows! : Row.Decoder a -> Sql.Query => Result (List a) _`, `row!` (at most one row: `Maybe a`), `execute! : Sql.Query => Result U64 _` (rows changed) |
 | `Sql` | `query : Str -> List Sql.Param -> Sql.Query` (the SQL is a literal, rule P301), parameters `text`, `int`, `float`, `bool`, `null`, `nullable` |
@@ -232,7 +243,7 @@ owner.grant("app")?;                                   // the app's role may use
 drop(owner);
 let database = punk_server_postgres::Postgres::new(&std::env::var("DATABASE_URL")?, 8)?;
 Lockdown::new().allow(&database) ...                   // its port (and the resolver for a name)
-let app = punk_server::App::new(clock, random, kv, config).with_database(database);
+let app = punk_server::App::new(clock, random, kv, settings)?.with_database(database);
 ```
 
 **TLS.** The connection string decides, as with libpq: `sslmode=disable`,
@@ -337,7 +348,7 @@ use punk_server_mongo::{Access, Mongo};
 let mongo = Mongo::connect(&std::env::var("MONGO_URL")?, "shortener")?
     .allow("links", Access::ReadWrite);               // and no other collection
 Lockdown::new().allow(&mongo) ...                     // its port (and the resolver for a name)
-let app = punk_server::App::new(clock, random, kv, config).with_documents(mongo);
+let app = punk_server::App::new(clock, random, kv, settings)?.with_documents(mongo);
 ```
 
 **TLS** as the connection string says: `tls=true`, and `tlsCAFile=<file.pem>`
@@ -353,14 +364,68 @@ operation that finds no server within 5 seconds is "6" (set
 one. Tests use `punk_server_mongo::testing::database` (a fresh database on
 `PUNK_TEST_MONGO`).
 
+## Settings and secrets
+
+An app says which settings it needs, and what type each one is, with a
+decoder in Elm's style; the platform hands `handle!` the result:
+
+```
+app [Settings, main] { Platform: platform "server" }
+
+import Platform.Http exposing [Request, Response]
+import Platform.Config
+import Platform.Secret
+
+main =
+    { settings = settings, handle! = handle! }
+
+type alias Settings =
+    { baseUrl : Str
+    , ttlSeconds : Int
+    , apiKey : Secret
+    }
+
+settings : Config.Decoder Settings
+settings =
+    Config.map3 (fn baseUrl, ttlSeconds, apiKey -> { baseUrl, ttlSeconds, apiKey })
+        (Config.text "BASE_URL")
+        (Config.int "TTL_SECONDS" |> Config.withDefault 3600)
+        (Config.secret "API_KEY")
+
+handle! : Settings -> Request => Response
+handle! = fn config, req -> ...
+```
+
+The wiring gives the settings as names with text, `punk_server::Settings`,
+usually from environment variables it names one by one:
+
+```rust
+let settings = punk_server::Settings::from_env(&["BASE_URL", "TTL_SECONDS", "API_KEY"]);
+let app = punk_server::App::new(clock, random, kv, settings)?;
+```
+
+`App::new` runs the decoder once, before the server starts: settings that
+don't fit are a `BadSettings` with one line per setting (`API_KEY is
+missing`, `TTL_SECONDS should be a whole number, it is "soon"`), so a server
+with a typo in its settings never takes a request. A secret's value is never
+in such a message, and `Settings`' `Debug` shows only the names. For each
+request the decoder runs again, on that request's thread (a value made by
+the app is never shared between threads); that takes microseconds.
+
+A `Secret` has no way back to text: there is no `Secret.toText`, `Log.info!`
+takes a `Str`, and `Str.inspect` and `dbg` show `<secret>`. An app can only
+compare a value with it (`Secret.matches token config.apiKey`, every byte, so
+the time says nothing about where they differ) or, later, hand it to the
+platform (a JWT signing key, J4).
+
 ## What the app can do
 
 Only what the platform hands it, as in ambit: a clock, randomness, one
 key-value store, one SQL database, one document database (the collections
-the wiring allows), its configuration and a log. There is no file, network,
+the wiring allows), its settings and a log. There is no file, network,
 process or environment access in the API, so a punk server app can't reach
 anything else, whatever its code does. Which store, which clock and which
-configuration is up to the wiring, a few lines of Rust per app (like ambit's
+settings is up to the wiring, a few lines of Rust per app (like ambit's
 `run-native`): the real ones in its `main`, the deterministic ones of
 `ambit-server-sim` in its tests. The wiring of the shortener also locks the
 whole process to its database file and its port (ambit's `Lockdown`: Landlock
@@ -387,7 +452,7 @@ examples/shortener/
     server/
         Cargo.toml          depends on platforms/server/host and ambit
         build.rs            runs `punk build` on Shortener.punk, links libapp.a
-        src/lib.rs          init(clock, random, kv, config): the app as an ambit Handler
+        src/lib.rs          init(clock, random, kv, config): the app as an ambit Handler, with its settings
         src/main.rs         the wiring: native store, clock, randomness, lockdown, port
         src/hermit.rs       the wiring as a Hermit unikernel (ambit's hermit backend)
         tests/spec.rs       ambit's spec/tests/shortener.rs, copied unchanged
@@ -483,6 +548,4 @@ shortener checks it too).
   Mongo on hermit (the driver needs tokio), and schema validators made
   from the decoders.
 - `Kv.scan` (ambit has it): no app needed it yet.
-- A typed configuration instead of `Config.text!`: the platform would need a
-  type variable for it, and the JSON decoder does the job.
 - A store that survives a restart on hermit (ambit has none there yet either).

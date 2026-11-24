@@ -24,6 +24,7 @@ grep -q '"/my-notes"' my-notes/Dockerfile
 test -f my-notes/.dockerignore
 test -f my-notes/server/src/hermit.rs
 grep -qF 'release/my-notes"' my-notes/server/unikernel.sh
+grep -qF 'pub const SETTINGS: &[&str] = &[];' my-notes/server/src/lib.rs
 (cd my-notes/server && PUNK="$punk" cargo test)
 
 sh "$root/tools/new/new.sh" tui counter

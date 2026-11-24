@@ -1,7 +1,7 @@
 # Next steps
 
-You have a JSON API with a database, a migration, tests, a container and a
-unikernel.
+You have a JSON API with a database, a migration, a secret key, tests, a
+container and a unikernel.
 Some things to try next:
 
 - **Change a note.** Add `PUT /notes/<id>`. Ask your agent: with the skill

@@ -52,20 +52,26 @@ as, which only gets to use them, as far as the policies allow.
 
 ## Run it
 
-The server reads the two URLs from the environment:
+The server reads the two URLs from the environment, and the app's
+`API_KEY` (see [Settings and a secret](settings.md)):
 
 ```sh
 docker run --rm --name notes --network notes -p 8080:8080 \
     -e DATABASE_OWNER_URL='postgres://notes_owner:owner-secret@notes-db/notes?sslmode=disable' \
     -e DATABASE_URL='postgres://notes_app:app-secret@notes-db/notes?sslmode=disable' \
+    -e API_KEY \
     notes
 ```
+
+`-e API_KEY` without a value passes on the `API_KEY` of your shell, so the
+key isn't in the command.
 
 It applies `schema.sql` (both versions, the first time) and says that it
 listens. From another terminal:
 
 ```sh
-curl -s localhost:8080/notes -d '{"title": "Shopping", "body": "milk, bread"}'
+curl -s localhost:8080/notes -H "Authorization: Bearer $API_KEY" \
+    -d '{"title": "Shopping", "body": "milk, bread"}'
 curl -s localhost:8080/notes
 ```
 
@@ -105,21 +111,22 @@ too: the server always checks as `verify-full` does.
 
 ## Passwords
 
-The passwords are in the URLs, so keep them out of the image and out of your
-shell's history: put the settings in a file that isn't in git, and give the
-file to `docker run`:
+The passwords are in the URLs, and the API key is a secret too, so keep them
+out of the image and out of your shell's history: put the settings in a
+file that isn't in git, and give the file to `docker run`:
 
 ```sh
 # notes.env
 DATABASE_OWNER_URL=postgres://notes_owner:...@db.example.com/notes
 DATABASE_URL=postgres://notes_app:...@db.example.com/notes
+API_KEY=...
 ```
 
 ```sh
 docker run --rm -p 8080:8080 --env-file notes.env notes
 ```
 
-Where the container runs (Kubernetes, Fly.io, Cloud Run, ...), the same two
+Where the container runs (Kubernetes, Fly.io, Cloud Run, ...), the same
 settings come from its secrets.
 
 ## What the container can do

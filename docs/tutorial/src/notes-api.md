@@ -20,9 +20,10 @@ if you'd rather copy it at once.
 ## The header
 
 ```elm
-app [handle!] { Platform: platform "server", Json: "json" }
+app [Settings, main] { Platform: platform "server", Json: "json" }
 
 import Platform.Http exposing [Request, Response]
+import Platform.Config
 import Platform.Db
 import Platform.Random
 import Platform.Log
@@ -35,6 +36,13 @@ Each `import` of `Platform` is a capability: the database, random numbers
 (for the ids), the log. They are the only effects the app can do. It cannot
 open files or make other connections, because the platform gives it no way
 to.
+
+After the comment that says what the app does comes `main`, as in the hello
+world: no settings yet.
+
+```elm
+{{#include ../../../examples/tutorial/notes-v1/Notes.punk:main}}
+```
 
 ## The table
 

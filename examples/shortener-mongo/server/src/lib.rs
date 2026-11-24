@@ -29,13 +29,13 @@ pub fn init(
     documents: impl Documents,
     config: Config,
 ) -> impl Handler {
-    // What the punk app reads with `Config.text!` and its `settings` decoder.
-    let json = format!(
-        r#"{{"baseUrl":{},"ttlSeconds":{}}}"#,
-        json_string(&config.base_url),
-        config.ttl.as_secs()
-    );
-    punk_server::App::new(clock, random, NoKv, json).with_documents(documents)
+    // What the punk app's `settings` decoder reads.
+    let settings = punk_server::Settings::new()
+        .set("BASE_URL", config.base_url)
+        .set("TTL_SECONDS", config.ttl.as_secs().to_string());
+    punk_server::App::new(clock, random, NoKv, settings)
+        .expect("the settings are made from a `Config`, so they fit the app")
+        .with_documents(documents)
 }
 
 /// The key-value store of an app that has a database instead.
@@ -58,23 +58,4 @@ impl ambit_caps::Kv for NoKv {
 
 fn no_kv() -> ambit_caps::KvError {
     ambit_caps::KvError::new("this app has no key-value store")
-}
-
-/// `text` as a JSON string.
-fn json_string(text: &str) -> String {
-    let mut out = String::with_capacity(text.len() + 2);
-    out.push('"');
-    for c in text.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
 }

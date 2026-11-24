@@ -9,6 +9,9 @@
 //! server listens on `HOST` (default 127.0.0.1, this computer only; the container's is 0.0.0.0)
 //! and `PORT` (8080). On Linux the server is then locked to its port and the database's port.
 //!
+//! The app's own settings are the environment variables that `SETTINGS` in `lib.rs` names, and
+//! no others; the server doesn't start when they don't fit the app's `settings` decoder.
+//!
 //! As a Hermit unikernel the wiring is `hermit.rs` instead.
 
 #[cfg(target_os = "hermit")]
@@ -21,6 +24,8 @@ use hermit::main;
 use ambit_lockdown::{Grant, Lockdown};
 #[cfg(not(target_os = "hermit"))]
 use ambit_server_native::{Listen, OsRandom, StdClock};
+#[cfg(not(target_os = "hermit"))]
+use punk_server::Settings;
 #[cfg(not(target_os = "hermit"))]
 use punk_server_postgres::{Owner, Postgres};
 
@@ -80,7 +85,8 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .apply_or_warn("notes")?;
 
     tracing::info!("notes listens on http://{}", listen.addr);
-    let app = notes::init(StdClock::new(), OsRandom, database);
+    let settings = Settings::from_env(notes::SETTINGS);
+    let app = notes::init(StdClock::new(), OsRandom, database, settings)?;
     ambit_server_native::serve(app, listen)?;
     Ok(())
 }

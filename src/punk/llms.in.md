@@ -371,18 +371,34 @@ as D`. All examples use it; lowercase `pf` and `json` keep working.
 ### The server platform
 
 `platforms/server` is for HTTP servers (on ambit's server platform). The app
-is one function, called for every request:
+is a decoder for its settings and one function, called for every request
+with the settings and the request:
 
 ```
-app [handle!] { Platform: platform "server", Json: "json" }
+app [Settings, main] { Platform: platform "server" }
 
 import Platform.Http exposing [Request, Response]
+import Platform.Config
 
-handle! : Request => Response
-handle! = fn req ->
+main =
+    { settings = settings, handle! = handle! }
+
+-- What the app needs from the server's settings; `Config.succeed {}` for none.
+type alias Settings =
+    { greeting : Str
+    }
+
+settings : Config.Decoder Settings
+settings =
+    Config.map (fn greeting -> { greeting = greeting })
+        (Config.text "GREETING" |> Config.withDefault "hello")
+
+handle! : Settings -> Request => Response
+handle! = fn config, req ->
     case toRoute req of
-        Just Hello -> { status = 200, headers = [], body = Str.toUtf8 "hello\n" }
-        Just (Greet name) -> { status = 200, headers = [], body = Str.toUtf8 "hello ${name}\n" }
+        Just Hello -> { status = 200, headers = [], body = Str.toUtf8 "${config.greeting}\n" }
+        Just (Greet name) ->
+            { status = 200, headers = [], body = Str.toUtf8 "${config.greeting} ${name}\n" }
         Nothing -> { status = 404, headers = [], body = [] }
 
 -- The app's own type: one tag per route.
@@ -410,17 +426,39 @@ Request : { method : Str, path : Str, query : Str, headers : List (Str, Str), bo
 Response : { status : U16, headers : List (Str, Str), body : List U8 }
 Http.method : Request -> Http.Method                -- Get | Head | Post | Put | Patch | Delete | Options | Other Str
 Http.segments : Request -> List Str                 -- "/notes/n1/" is ["notes", "n1"], each part percent-decoded
+Http.header : Str -> Request -> Maybe Str          -- a header, the name in any case: Http.header "authorization" req
 Http.request : Http.Method -> Str -> Request        -- a request to test a router on: Http.request Get "/notes?all=1"
 Kv.get! : Str => Result (Maybe Str) [KvErr Str]
 Kv.put! : Str -> Str => Result {} [KvErr Str]      -- key, value
 Kv.delete! : Str => Result {} [KvErr Str]
 Clock.now! : () => I64                              -- milliseconds since 1970
 Random.u64! : () => U64
-Config.text! : () => Str                            -- the configuration, JSON: decode it with json.Decode
 Log.info! : Str => {}                               -- also Log.warn!, Log.error!
 ```
 
-Header names in a request are lower case. The app has no other way to reach
+Header names in a request are lower case.
+
+Settings are text the wiring gives by name (environment variables it lists
+in `SETTINGS` in `server/src/lib.rs`). The `settings` decoder types them;
+the server runs it when it starts and refuses to start, naming every
+setting that is missing or wrong. A password, key or token is a `Secret`,
+never a `Str`: it can't become text, so it can't reach a log or a response.
+
+```
+Config.text : Str -> Config.Decoder Str             -- the setting with this name: Config.text "BASE_URL"
+Config.int : Str -> Config.Decoder Int              -- "3600"
+Config.bool : Str -> Config.Decoder Bool            -- "true" or "false"
+Config.secret : Str -> Config.Decoder Secret        -- not empty; a message about it never shows it
+Config.withDefault : a -> Config.Decoder a -> Config.Decoder a    -- when missing: Config.int "PORT" |> Config.withDefault 8080
+Config.maybe : Config.Decoder a -> Config.Decoder (Maybe a)
+Config.map : (a -> b) -> Config.Decoder a -> Config.Decoder b     -- also map2 .. map6, as Json.Decode
+Config.succeed : a -> Config.Decoder a              -- also Config.fail : Str -> .., Config.andThen
+Config.decode : Config.Decoder a -> List (Str, Str) -> Result a Str   -- for tests: Config.decode settings [("BASE_URL", "x")]
+Secret.matches : Str -> Secret -> Bool              -- constant time: Secret.matches token config.apiKey
+Secret.fromText : Str -> Secret                     -- for tests only; import Platform.Secret
+```
+
+The app has no other way to reach
 the world: no files, no network, no environment. It is not run with
 `punk app.punk`: `punk build` makes an archive that a small Rust crate links
 and tests (see `platforms/server/README.md` and `examples/shortener/`).

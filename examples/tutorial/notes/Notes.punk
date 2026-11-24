@@ -1,24 +1,45 @@
-app [handle!] { Platform: platform "server", Json: "json" }
+app [Settings, main] { Platform: platform "server", Json: "json" }
 
 import Platform.Http exposing [Request, Response]
+import Platform.Config
 import Platform.Db
 import Platform.Random
 import Platform.Clock
 import Platform.Log
+import Platform.Secret
 import Json.Decode as D
 import Json.Encode as E
 import Json.Value
 
 {-| Notes: a JSON API in punk-lang, with its notes in Postgres. This is the
 app of the tutorial "From zero to a JSON API" (docs/tutorial), after its
-migration: each note has the time it was made. ../notes-v1 is the app
-before it.
+migration and its settings: each note has the time it was made, and only
+who has the API key may write. ../notes-v1 is the app before them.
 
 - `GET /notes`: all notes, as a JSON array, newest first.
 - `POST /notes` with `{"title": "...", "body": "..."}`: a new note, 201 with the note.
 - `GET /notes/<id>`: one note, 404 if there is none.
 - `DELETE /notes/<id>`: removes it, 204.
+
+`POST` and `DELETE` need the header `Authorization: Bearer <API_KEY>`;
+without it they are a 401.
 -}
+
+-- ANCHOR: settings
+main =
+    { settings = settings, handle! = handle! }
+
+-- What the app needs from the server's settings: the key that lets a
+-- client write.
+type alias Settings =
+    { apiKey : Secret
+    }
+
+settings : Config.Decoder Settings
+settings =
+    Config.map (fn apiKey -> { apiKey = apiKey }) (Config.secret "API_KEY")
+
+-- ANCHOR_END: settings
 
 -- ANCHOR: table
 type alias Note =
@@ -120,9 +141,9 @@ expect toRoute (Http.request Get "/notes/n12/comments") == Nothing
 -- ANCHOR_END: route-type
 
 -- ANCHOR: routes
-handle! : Request => Response
-handle! = fn req ->
-    case route! req of
+handle! : Settings -> Request => Response
+handle! = fn config, req ->
+    case route! config req of
         Ok response -> response
         Err (PgErr problem) ->
             Log.error! "storage failed (${problem.code}): ${problem.message}"
@@ -131,16 +152,74 @@ handle! = fn req ->
             Log.error! "a stored note doesn't fit: ${problem}"
             problemJson 500 "internal error"
 
-route! : Request => Result Response _
-route! = fn req ->
+route! : Settings -> Request => Result Response _
+route! = fn config, req ->
     case toRoute req of
         Just AllNotes -> list! ()
-        Just CreateNote -> create! req.body
+        Just CreateNote ->
+            if hasKey config req then
+                create! req.body
+            else
+                Ok (problemJson 401 "this needs the API key")
         Just (ShowNote id) -> show! id
-        Just (RemoveNote id) -> remove! id
+        Just (RemoveNote id) ->
+            if hasKey config req then
+                remove! id
+            else
+                Ok (problemJson 401 "this needs the API key")
         Nothing -> Ok (problemJson 404 "not found")
 
 -- ANCHOR_END: routes
+
+-- ANCHOR: has-key
+-- Whether the request has the API key: `Authorization: Bearer <key>`.
+hasKey : Settings -> Request -> Bool
+hasKey = fn config, req ->
+    case Http.header "authorization" req of
+        Just value ->
+            String.startsWith "Bearer " value
+                && Secret.matches (Str.dropPrefix "Bearer " value) config.apiKey
+        Nothing -> False
+
+expect
+    hasKey
+        { apiKey = Secret.fromText "k3y" }
+        { method = "POST"
+        , path = "/notes"
+        , query = ""
+        , headers = [("authorization", "Bearer k3y")]
+        , body = []
+        }
+
+expect
+    hasKey
+        { apiKey = Secret.fromText "k3y" }
+        { method = "POST"
+        , path = "/notes"
+        , query = ""
+        , headers = [("authorization", "Bearer guess")]
+        , body = []
+        }
+        == False
+
+expect hasKey { apiKey = Secret.fromText "k3y" } (Http.request Post "/notes") == False
+
+expect
+    hasKey
+        { apiKey = Secret.fromText "k3y" }
+        { method = "POST"
+        , path = "/notes"
+        , query = ""
+        , headers = [("authorization", "k3y")]
+        , body = []
+        }
+        == False
+
+expect
+    Config.decode settings []
+        |> Result.isErr
+
+-- ANCHOR_END: has-key
 
 -- ANCHOR: handlers
 list! : () => Result Response _

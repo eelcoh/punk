@@ -5,7 +5,8 @@ description: Use when adding or changing an HTTP endpoint in a punk server app (
 
 # Add an endpoint to a punk server app
 
-A server app has one entry point, `handle! : Request => Response`, which
+A server app has one entry point, `handle! : Settings -> Request => Response`
+(the app's settings, typed by its `Config` decoder, and the request), which
 usually calls a `route! : Request => Result Response _` that does a `case`
 on `toRoute req`: the app's own `type Route`, one tag per endpoint, read
 from `(Http.method req, Http.segments req)`. Models to copy from are

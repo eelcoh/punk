@@ -1,6 +1,7 @@
-app [handle!] { Platform: platform "server", Json: "json" }
+app [Settings, main] { Platform: platform "server", Json: "json" }
 
 import Platform.Http exposing [Request, Response]
+import Platform.Config
 import Platform.Log
 import Json.Encode as E
 import Json.Value
@@ -10,8 +11,15 @@ import Json.Value
 - `GET /hello`: `{"hello": "world"}`.
 -}
 
-handle! : Request => Response
-handle! = fn req ->
+main =
+    { settings = Config.succeed {}, handle! = handle! }
+
+-- The app needs no settings.
+type alias Settings =
+    {}
+
+handle! : Settings -> Request => Response
+handle! = fn _, req ->
     Log.info! "${req.method} ${req.path}"
     case toRoute req of
         Just Hello -> json 200 (E.object [("hello", E.string "world")])

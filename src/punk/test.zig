@@ -1220,8 +1220,8 @@ test "rules: crash and dbg only inside tests" {
 test "rules: the SQL of Sql.query is text in the program" {
     const head = "app [main!] { pf: platform \"p.roc\" }\n\nimport pf.Sql\n\n";
     // Text in the program, also through a pipe, `as`, or `exposing`: fine.
-    try translateOk(head ++ "q = fn id -> Sql.query \"SELECT url FROM links WHERE id = $1\" [ Sql.text id ]\n");
-    try translateOk(head ++ "q = fn id -> [ Sql.text id ] |> Sql.query \"SELECT 1\"\n");
+    try translateOk(head ++ "q = fn id -> Sql.query \"SELECT $1::text\" [ Sql.text id ]\n");
+    try translateOk(head ++ "q = fn id -> [ Sql.text id ] |> Sql.query \"SELECT $1::text\"\n");
     try translateOk("app [main!] { pf: platform \"p.roc\" }\n\nimport pf.Sql as Db\n\nq = Db.query (\"SELECT 1\") []\n");
     // Text made while the program runs: P301.
     try checkRule(head ++ "q = fn t -> Sql.query \"SELECT * FROM ${t}\" []\n", 5, 23, .sql_not_literal);
@@ -1232,6 +1232,76 @@ test "rules: the SQL of Sql.query is text in the program" {
     try checkRule("app [main!] { pf: platform \"p.roc\" }\n\nimport pf.Sql exposing [query]\n\nq = fn s -> query s []\n", 5, 13, .sql_not_literal);
     // A module of the app's own called Sql is not the platform's.
     try translateOk("app [main!] { pf: platform \"p.roc\" }\n\nimport Sql\n\nq = fn s -> Sql.query s []\n");
+}
+
+test "rules: the SQL of Sql.query fits the tables (P303)" {
+    const head =
+        \\app [main!] { Platform: platform "p.roc" }
+        \\
+        \\import Platform.Db
+        \\import Platform.Sql
+        \\import Platform.Time exposing [Posix]
+        \\
+        \\type alias Link =
+        \\    { id : Str
+        \\    , url : Str
+        \\    , owner : Str
+        \\    , hits : Int
+        \\    , created : Posix
+        \\    , note : Maybe Str
+        \\    }
+        \\
+        \\type alias User =
+        \\    { id : Str
+        \\    , name : Str
+        \\    }
+        \\
+        \\table links : Link
+        \\    key id
+        \\    read everyone
+        \\    insert everyone
+        \\    update everyone
+        \\    delete everyone
+        \\
+        \\table users : User
+        \\    key id
+        \\    read everyone
+        \\    insert everyone
+        \\    update everyone
+        \\    delete everyone
+        \\
+        \\
+    ;
+    // 35 is the line after the head.
+    // What fits: columns, aliases, joins, functions, casts, output names.
+    try translateOk(head ++ "q = fn id -> Sql.query \"SELECT url, hits FROM links WHERE id = $1\" [ Sql.text id ]\n");
+    try translateOk(head ++ "q = fn o, n -> Sql.query \"SELECT l.url, u.name FROM links AS l JOIN users u ON u.id = l.owner WHERE l.hits > $2 AND u.id = $1 ORDER BY l.created DESC LIMIT $3\" [ Sql.text o, Sql.int n, Sql.int 10 ]\n");
+    try translateOk(head ++ "q = fn t -> Sql.query \"SELECT owner, count(*) AS n, sum(hits) AS total FROM links WHERE created > $1 GROUP BY owner HAVING sum(hits) > 10 ORDER BY total DESC\" [ Sql.posix t ]\n");
+    try translateOk(head ++ "q = fn id, url -> Sql.query \"INSERT INTO links (id, url, owner, hits, created, note) VALUES ($1, $2, 'ann', 0, now(), $3) ON CONFLICT (id) DO UPDATE SET url = excluded.url\" [ Sql.text id, Sql.text url, Sql.nullable Sql.text Nothing ]\n");
+    try translateOk(head ++ "q = fn id -> Sql.query \"UPDATE links SET hits = hits + 1, note = $2 WHERE id = $1\" [ Sql.text id, Sql.null ]\n");
+    try translateOk(head ++ "q = Sql.query \"SELECT extract(epoch FROM created)::bigint AS secs, url::text FROM links WHERE note IS NULL\" []\n");
+    try translateOk(head ++ "q = Sql.query \"WITH top AS (SELECT owner, max(hits) AS best FROM links GROUP BY owner) SELECT top.owner, best FROM top JOIN users ON users.id = top.owner\" []\n");
+    try translateOk(head ++ "q = Sql.query \"SELECT x.n FROM (SELECT count(*) AS n FROM links) AS x\" []\n");
+    try translateOk(head ++ "q = fn ps -> Sql.query \"SELECT url FROM links WHERE id = $1\" ps\n");
+    try translateOk(head ++ "q = fn id -> Sql.query \"SELECT url FROM links WHERE id = $1::text\" [ Sql.text id ]\n");
+    // Tables and columns the program doesn't have.
+    try checkRule(head ++ "q = Sql.query \"SELECT url FROM link\" []\n", 35, 32, .sql_tables);
+    try checkRule(head ++ "q = Sql.query \"SELECT adres FROM links\" []\n", 35, 23, .sql_tables);
+    try checkRule(head ++ "q = Sql.query \"SELECT l.adres FROM links l\" []\n", 35, 25, .sql_tables);
+    try checkRule(head ++ "q = Sql.query \"SELECT x.url FROM links l\" []\n", 35, 23, .sql_tables);
+    try checkRule(head ++ "q = Sql.query \"SELECT id FROM links JOIN users ON owner = name\" []\n", 35, 23, .sql_tables);
+    try checkRule(head ++ "q = Sql.query \"INSERT INTO links (id, adres) VALUES ('a', 'b')\" []\n", 35, 39, .sql_tables);
+    // Parameters of the wrong type, or too few or too many.
+    try checkRule(head ++ "q = fn n -> Sql.query \"SELECT url FROM links WHERE hits > $1\" [ Sql.text n ]\n", 35, 65, .sql_tables);
+    try checkRule(head ++ "q = fn n -> Sql.query \"SELECT url FROM links WHERE $1 < created\" [ Sql.int n ]\n", 35, 68, .sql_tables);
+    try checkRule(head ++ "q = fn a, b -> Sql.query \"INSERT INTO links (id, hits) VALUES ($1, $2)\" [ Sql.text a, Sql.float b ]\n", 35, 87, .sql_tables);
+    try checkRule(head ++ "q = fn n -> Sql.query \"SELECT url FROM links LIMIT $1\" [ Sql.text n ]\n", 35, 58, .sql_tables);
+    try checkRule(head ++ "q = Sql.query \"UPDATE links SET url = $1\" [ Sql.null ]\n", 35, 45, .sql_tables);
+    try checkRule(head ++ "q = Sql.query \"SELECT url FROM links WHERE id = $1\" []\n", 35, 15, .sql_tables);
+    try checkRule(head ++ "q = fn a, b -> Sql.query \"SELECT url FROM links WHERE id = $1\" [ Sql.text a, Sql.text b ]\n", 35, 78, .sql_tables);
+    try checkRule(head ++ "q = fn a -> Sql.query \"SELECT url FROM links WHERE id = $2\" [ Sql.text a ]\n", 35, 57, .sql_tables);
+    // Without tables, SQL that names one doesn't compile.
+    try checkRule("app [main!] { pf: platform \"p.roc\" }\n\nimport pf.Sql\n\nq = Sql.query \"SELECT url FROM links\" []\n", 5, 32, .sql_tables);
 }
 
 test "rules: Mongo collection and field names are text in the program" {

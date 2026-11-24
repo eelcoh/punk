@@ -16,6 +16,10 @@ fn main() {
 
     println!("cargo:rerun-if-env-changed=PUNK");
     println!("cargo:rerun-if-changed={}", app.display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        manifest.join("../Tables.punk").display()
+    );
     println!("cargo:rerun-if-changed={}", punk.display());
     for dir in ["platforms/server", "packages/json"] {
         for entry in std::fs::read_dir(repo.join(dir)).unwrap().flatten() {

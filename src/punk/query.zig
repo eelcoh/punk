@@ -182,6 +182,7 @@ pub fn resolveTables(e: *Emitter, items: []const tr.Item) Error!void {
         }
         const table = try resolveTable(e, items, decl);
         try e.tables.put(e.a, decl.name, table);
+        try e.addProgramTable(table, decl.name, true);
     }
     // A table's name is not a value: it only starts a query.
     for (items) |item| switch (item.kind) {

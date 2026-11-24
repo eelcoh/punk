@@ -13,6 +13,8 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const query = @import("query.zig");
+const migrate = @import("migrate.zig");
 
 /// The language a module is written in.
 pub const Kind = enum { punk, roc };
@@ -32,6 +34,21 @@ pub const Interface = struct {
     /// with `type alias Grid = ...`, as in Elm). In Roc the module itself is
     /// the type `Grid`, so the alias is written `Grid.GridAlias` there.
     own_alias: ?[]const u8 = null,
+    /// The names of the tables the module declares (`table links : Link`).
+    /// A table is not a value: it can be exposed and imported, so that
+    /// another module's queries start from it.
+    tables: std.StringHashMapUnmanaged(void) = .empty,
+    /// The tables of the program the module is part of, as far as it can
+    /// see: its own and those of the modules it imports, at any depth.
+    /// The app's `schema.sql` holds them all.
+    shared: []const Shared = &.{},
+    /// The migrations (`migrate links ...`) of those tables.
+    migrations: []const migrate.MigrateDecl = &.{},
+    /// The fields of the user that the policies of those tables look at.
+    db_user: []const query.UserField = &.{},
+
+    /// A table of the program, and whether the module itself declares it.
+    pub const Shared = struct { table: *const query.Table, own: bool };
 
     pub const Exposing = struct {
         /// Lowercase names, in Roc spelling.

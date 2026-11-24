@@ -46,12 +46,18 @@ pub const indent_width = 4;
 /// Formats punkroc source. On a syntax error `error.ParseError` is returned
 /// with `diag` filled in; the source is left as it is.
 pub fn format(a: Allocator, src: []const u8, diag: *Diagnostic) Error![]const u8 {
-    const before = try translate.translate(a, src, diag);
+    return formatWith(a, src, diag, null);
+}
+
+/// Like `format`, with the modules the file imports read through
+/// `resolver`, so that the translations it compares see their tables.
+pub fn formatWith(a: Allocator, src: []const u8, diag: *Diagnostic, resolver: ?translate.Resolver) Error![]const u8 {
+    const before = try translate.translateWith(a, src, diag, resolver);
     const toks = try translate.lex(a, src, diag);
     const laid_out = try render(a, src, toks);
-    const out = try breakLongLines(a, laid_out, before);
+    const out = try breakLongLines(a, laid_out, before, resolver);
     var d2: Diagnostic = .{};
-    const after = translate.translate(a, out, &d2) catch |err| switch (err) {
+    const after = translate.translateWith(a, out, &d2, resolver) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         error.ParseError => return unsafe(diag, d2.line, d2.col),
     };
@@ -393,7 +399,7 @@ pub const max_width = 80;
 /// Each step is kept only when the file still means the same (its Roc
 /// translation is `roc`), so a split the layout rules don't allow is simply
 /// not made.
-fn breakLongLines(a: Allocator, text: []const u8, roc: []const u8) Error![]const u8 {
+fn breakLongLines(a: Allocator, text: []const u8, roc: []const u8, resolver: ?translate.Resolver) Error![]const u8 {
     var cur = text;
     var from_line: u32 = 1;
     var steps: usize = 0;
@@ -426,7 +432,7 @@ fn breakLongLines(a: Allocator, text: []const u8, roc: []const u8) Error![]const
                 else => continue,
             };
             var d2: Diagnostic = .{};
-            const after = translate.translate(a, relaid, &d2) catch |err| switch (err) {
+            const after = translate.translateWith(a, relaid, &d2, resolver) catch |err| switch (err) {
                 error.OutOfMemory => return error.OutOfMemory,
                 error.ParseError => continue,
             };

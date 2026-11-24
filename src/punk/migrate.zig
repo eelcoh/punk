@@ -87,8 +87,10 @@ pub const Result = struct {
 pub fn history(e: *Emitter, items: []const tr.Item, existing: ?[]const u8) Error!Result {
     const a = e.a;
     const old = try parseHistory(e, existing orelse "");
+    // The tables of the whole program: the module's own and those of the
+    // modules it imports.
     var tables: std.ArrayList(*const Table) = .empty;
-    for (items) |item| if (item.kind == .table) try tables.append(a, e.tables.get(item.kind.table.name).?);
+    for (e.program_tables.items) |pt| try tables.append(a, pt.table);
     var migrations: std.ArrayList(MigrateDecl) = .empty;
     for (items) |item| if (item.kind == .migrate) {
         const m = item.kind.migrate;
@@ -97,6 +99,12 @@ pub fn history(e: *Emitter, items: []const tr.Item, existing: ?[]const u8) Error
         };
         try migrations.append(a, m);
     };
+    for (e.imported_migrations.items) |m| {
+        const seen = for (migrations.items) |prev| {
+            if (std.mem.eql(u8, prev.table, m.table)) break true;
+        } else false;
+        if (!seen) try migrations.append(a, m);
+    }
 
     var body: std.ArrayList(u8) = .empty;
     var report: std.ArrayList(u8) = .empty;
@@ -104,7 +112,7 @@ pub fn history(e: *Emitter, items: []const tr.Item, existing: ?[]const u8) Error
 
     // Tables that went away.
     for (old.tables) |snap| {
-        if (e.tables.get(snap.name) == null) {
+        if (programTable(e, snap.name) == null) {
             const at = for (migrations.items) |m| {
                 if (std.mem.eql(u8, m.table, snap.name)) break m.table;
             } else "";
@@ -112,12 +120,15 @@ pub fn history(e: *Emitter, items: []const tr.Item, existing: ?[]const u8) Error
         }
     }
     for (migrations.items) |m| {
-        if (e.tables.get(m.table) == null) {
+        if (programTable(e, m.table) == null) {
             return e.errAtRule(m.table, .migration, try std.fmt.allocPrint(a, "'{s}' is not a table of this module", .{m.table}));
         }
     }
 
-    for (tables.items) |t| {
+    for (tables.items, e.program_tables.items) |t, pt| {
+        // An error about a table of another module points at its import.
+        e.foreign_at = pt.at;
+        defer e.foreign_at = null;
         const snap = findSnap(old.tables, t.decl.name);
         const mig = for (migrations.items) |m| {
             if (std.mem.eql(u8, m.table, t.decl.name)) break m;
@@ -158,19 +169,13 @@ pub fn history(e: *Emitter, items: []const tr.Item, existing: ?[]const u8) Error
 /// there is no `schema.sql`.
 pub fn check(e: *Emitter, items: []const tr.Item, existing: ?[]const u8) Error!void {
     const a = e.a;
-    var has_tables = false;
-    for (items) |item| if (item.kind == .table) {
-        has_tables = true;
-    };
-    if (!has_tables) {
+    if (e.program_tables.items.len == 0) {
         for (items) |item| if (item.kind == .migrate) {
             return e.errAtRule(item.kind.migrate.table, .migration, try std.fmt.allocPrint(a, "'{s}' is not a table of this module", .{item.kind.migrate.table}));
         };
         return;
     }
-    const first = for (items) |item| {
-        if (item.kind == .table) break item.kind.table.name;
-    } else unreachable;
+    const first = e.program_tables.items[0].at;
     if (existing == null) {
         return e.errAtRule(first, .migration, "this program's tables have no schema.sql next to it yet: run 'punk check --schema' on this file, which writes it");
     }
@@ -185,6 +190,16 @@ pub fn check(e: *Emitter, items: []const tr.Item, existing: ?[]const u8) Error!v
     for (items) |item| if (item.kind == .migrate) {
         return e.errAtRule(item.kind.migrate.table, .migration, try std.fmt.allocPrint(a, "the migration of '{s}' is in schema.sql already: remove the migrate", .{item.kind.migrate.table}));
     };
+    for (e.imported_migrations.items) |m| {
+        const at = if (programTable(e, m.table)) |pt| pt.at else first;
+        return e.errAtRule(at, .migration, try std.fmt.allocPrint(a, "the migration of '{s}' is in schema.sql already: remove the migrate from the module that declares the table", .{m.table}));
+    }
+}
+
+/// The table of the program with this name, as declared.
+fn programTable(e: *Emitter, name: []const u8) ?*const Emitter.ProgramTable {
+    for (e.program_tables.items) |*pt| if (std.mem.eql(u8, pt.table.decl.name, name)) return pt;
+    return null;
 }
 
 fn findSnap(snaps: []const Snap, name: []const u8) ?*const Snap {

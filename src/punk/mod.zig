@@ -15,7 +15,23 @@ pub const translate = translate_mod.translate;
 /// The schema of the tables of a `.punk` file, as the history of versions in
 /// its `schema.sql` (src/punk/migrate.zig).
 pub const schema = translate_mod.schema;
+
+/// Like `schema`, with the tables of the modules the app at `path` imports,
+/// which `reader` reads: the app's `schema.sql` holds the whole program's.
+pub fn schemaAt(arena: std.mem.Allocator, path: []const u8, src: []const u8, existing: ?[]const u8, diag: *Diagnostic, reader: Reader) Error!translate_mod.SchemaResult {
+    const ctx = try arena.create(LoadCtx);
+    ctx.* = .{ .reader = reader, .dir = std.fs.path.dirname(path) orelse "." };
+    return translate_mod.schemaWith(arena, src, existing, diag, .{ .ctx = ctx, .load = load });
+}
 pub const SchemaResult = translate_mod.SchemaResult;
+
+/// A resolver for the file at `path` that reads the modules it imports with
+/// `reader`, without its `schema.sql` (for `punk fmt`).
+pub fn resolverFor(arena: std.mem.Allocator, path: []const u8, reader: Reader) std.mem.Allocator.Error!translate_mod.Resolver {
+    const ctx = try arena.create(LoadCtx);
+    ctx.* = .{ .reader = reader, .dir = std.fs.path.dirname(path) orelse "." };
+    return .{ .ctx = ctx, .load = load };
+}
 
 /// A type as Roc's compiler shows it, written as in punk (`Try(I64, Str)` is
 /// `Result Int Str`), for error messages.
@@ -322,7 +338,7 @@ fn positionOf(lines: []const u32, offset: u32) Position {
     return .{ .line = @intCast(lo + 1), .column = offset - lines[lo] + 1 };
 }
 
-const LoadCtx = struct { reader: Reader, dir: []const u8 };
+const LoadCtx = struct { reader: Reader, dir: []const u8, depth: u8 = 0 };
 
 /// The `schema.sql` next to the file being translated.
 fn loadSchema(ctx_ptr: ?*anyopaque, arena: std.mem.Allocator) ?[]const u8 {
@@ -333,14 +349,22 @@ fn loadSchema(ctx_ptr: ?*anyopaque, arena: std.mem.Allocator) ?[]const u8 {
 
 fn load(ctx_ptr: ?*anyopaque, arena: std.mem.Allocator, imp: translate_mod.Import) Error!?*const Interface {
     const ctx: *LoadCtx = @ptrCast(@alignCast(ctx_ptr.?));
-    return loadFrom(ctx.reader, ctx.dir, arena, imp);
+    return loadAt(ctx.reader, ctx.dir, arena, imp, ctx.depth);
 }
+
+/// How deep imports of imports are read for their tables; deeper (or a
+/// cycle of imports) leaves them out.
+const max_depth = 8;
 
 /// Finds an imported module next to the importing file, or in the directory
 /// of a package whose path the app header gives (`pf: platform "../pf/main.roc"`).
 /// `Foo.roc` wins over `Foo.punk`, as in the compiler. A package given by URL
 /// is looked up where `reader.packageDir` says it is.
 pub fn loadFrom(reader: Reader, dir: []const u8, arena: std.mem.Allocator, imp: translate_mod.Import) Error!?*const Interface {
+    return loadAt(reader, dir, arena, imp, 0);
+}
+
+fn loadAt(reader: Reader, dir: []const u8, arena: std.mem.Allocator, imp: translate_mod.Import, depth: u8) Error!?*const Interface {
     const base = if (imp.package != null) blk: {
         const pkg = imp.package_path orelse return null;
         if (std.mem.find(u8, pkg, "://") != null) {
@@ -362,7 +386,14 @@ pub fn loadFrom(reader: Reader, dir: []const u8, arena: std.mem.Allocator, imp: 
         } else {
             var diag: Diagnostic = .{};
             // A syntax error is reported when the module itself is translated.
-            iface.* = translate_mod.punkInterface(arena, src, &diag) catch |err| switch (err) {
+            // The module's own imports, for the tables they bring.
+            var resolver: ?translate_mod.Resolver = null;
+            if (depth < max_depth) {
+                const ctx = try arena.create(LoadCtx);
+                ctx.* = .{ .reader = reader, .dir = std.fs.path.dirname(file) orelse ".", .depth = depth + 1 };
+                resolver = .{ .ctx = ctx, .load = load };
+            }
+            iface.* = translate_mod.punkInterface(arena, src, &diag, resolver) catch |err| switch (err) {
                 error.ParseError => return null,
                 error.OutOfMemory => return error.OutOfMemory,
             };

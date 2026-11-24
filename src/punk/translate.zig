@@ -205,24 +205,58 @@ pub fn sourceSpan(marks: []const Mark, start: u32, end: u32) struct { start: u32
 /// versions that continues `existing` (its `schema.sql`, null when there is
 /// none yet): `punk check --schema` (migrate.zig).
 pub fn schema(arena: Allocator, src: []const u8, existing: ?[]const u8, diag: *Diagnostic) Error!migrate.Result {
+    return schemaWith(arena, src, existing, diag, null);
+}
+
+/// Like `schema`, with the tables of the modules the app imports, which
+/// `resolver` finds.
+pub fn schemaWith(arena: Allocator, src: []const u8, existing: ?[]const u8, diag: *Diagnostic, resolver: ?Resolver) Error!migrate.Result {
     const toks = try lex(arena, src, diag);
     var p = Parser{ .a = arena, .src = src, .toks = toks, .diag = diag };
     const items = try p.parseModule();
-    var e = Emitter{ .a = arena, .diag = diag, .src = src };
+    var e = Emitter{ .a = arena, .diag = diag, .src = src, .resolver = resolver };
     try e.findSqlQuery(items);
     try query.resolveTables(&e, items);
+    try e.loadImports(items);
     return migrate.history(&e, items, existing);
 }
 
 pub const SchemaResult = migrate.Result;
 
-pub fn punkInterface(arena: Allocator, src: []const u8, diag: *Diagnostic) Error!Interface {
+pub fn punkInterface(arena: Allocator, src: []const u8, diag: *Diagnostic, resolver: ?Resolver) Error!Interface {
     const toks = try lex(arena, src, diag);
     var p = Parser{ .a = arena, .src = src, .toks = toks, .diag = diag };
     const items = try p.parseModule();
-    var e = Emitter{ .a = arena, .diag = diag, .src = src };
+    var e = Emitter{ .a = arena, .diag = diag, .src = src, .resolver = resolver };
+    // Its tables, and those of its imports: an error in them is reported
+    // when the module itself is translated, so here it only leaves them out.
+    var tables_ok = true;
+    e.findSqlQuery(items) catch |err| switch (err) {
+        error.ParseError => tables_ok = false,
+        error.OutOfMemory => return error.OutOfMemory,
+    };
+    if (tables_ok) query.resolveTables(&e, items) catch |err| switch (err) {
+        error.ParseError => tables_ok = false,
+        error.OutOfMemory => return error.OutOfMemory,
+    };
+    if (tables_ok) e.loadImports(items) catch |err| switch (err) {
+        error.ParseError => tables_ok = false,
+        error.OutOfMemory => return error.OutOfMemory,
+    };
+    e.diag.* = .{};
     try e.bindItems(items);
-    return e.interfaceOf(items);
+    var iface = try e.interfaceOf(items);
+    if (tables_ok) {
+        const shared = try arena.alloc(Interface.Shared, e.program_tables.items.len);
+        for (e.program_tables.items, shared) |pt, *sh| sh.* = .{ .table = pt.table, .own = pt.own };
+        iface.shared = shared;
+        var migrations: std.ArrayList(migrate.MigrateDecl) = .empty;
+        for (items) |item| if (item.kind == .migrate) try migrations.append(arena, item.kind.migrate);
+        try migrations.appendSlice(arena, e.imported_migrations.items);
+        iface.migrations = migrations.items;
+        iface.db_user = e.db_user.items;
+    }
+    return iface;
 }
 
 // Lexer
@@ -1981,8 +2015,91 @@ pub const Emitter = struct {
     tables: std.StringHashMapUnmanaged(*query.Table) = .empty,
     /// The fields of the user that the tables' policies look at (query.zig).
     db_user: std.ArrayListUnmanaged(query.UserField) = .empty,
+    /// All tables of the program this module sees: its own, then those of
+    /// the modules it imports (at any depth), once each. The app's
+    /// `schema.sql` holds them (migrate.zig).
+    program_tables: std.ArrayListUnmanaged(ProgramTable) = .empty,
+    /// The migrations of the tables of imported modules.
+    imported_migrations: std.ArrayListUnmanaged(migrate.MigrateDecl) = .empty,
+    /// Where an error points when its text is in another module (a table
+    /// or migration it declares): the import that brought it in.
+    foreign_at: ?[]const u8 = null,
 
     const MongoName = struct { name: []const u8, what: enum { collection, field } };
+
+    /// A table of the program, and where an error about it points: its
+    /// declaration, or the import of the module that declares it.
+    pub const ProgramTable = struct { table: *const query.Table, at: []const u8, own: bool };
+
+    /// Adds a table to `program_tables`, unless it is there already (a
+    /// module can come in through more than one import).
+    pub fn addProgramTable(e: *Emitter, t: *const query.Table, at: []const u8, own: bool) Error!void {
+        for (e.program_tables.items) |p| if (std.mem.eql(u8, p.table.plain(), t.plain())) {
+            if (own or p.own) return e.errAtRule(at, .table_decl, try std.fmt.allocPrint(e.a, "there is already a table '{s}' in this program", .{t.decl.name}));
+            return;
+        };
+        try e.program_tables.append(e.a, .{ .table = t, .at = at, .own = own });
+    }
+
+    /// The table `t` of the module imported as `alias`, as this module uses
+    /// it: its own types are the module's (`Ids.LinkId`).
+    fn importedTable(e: *Emitter, t: *const query.Table, alias: []const u8) Error!*query.Table {
+        const columns = try e.a.dupe(query.Column, t.columns);
+        for (columns) |*c| c.ty = try e.importedType(c.ty, alias);
+        const copy = try e.a.create(query.Table);
+        copy.* = t.*;
+        copy.columns = columns;
+        return copy;
+    }
+
+    fn importedType(e: *Emitter, ty: query.ColType, alias: []const u8) Error!query.ColType {
+        var out = ty;
+        const wrap = ty.wrap orelse return out;
+        if (std.mem.findScalar(u8, wrap.name, '.') != null) return out;
+        const last = if (std.mem.findScalarLast(u8, alias, '.')) |d| alias[d + 1 ..] else alias;
+        out.wrap = .{
+            .name = try std.fmt.allocPrint(e.a, "{s}.{s}", .{ alias, wrap.name }),
+            .tag = if (std.mem.eql(u8, wrap.name, last))
+                try std.fmt.allocPrint(e.a, "{s}.{s}", .{ alias, wrap.tag })
+            else
+                try std.fmt.allocPrint(e.a, "{s}.{s}.{s}", .{ alias, wrap.name, wrap.tag }),
+        };
+        return out;
+    }
+
+    /// Takes in the tables, migrations and user fields an imported module
+    /// brings, and names its exposed tables `Alias.links` (and `links`
+    /// when the import exposes it).
+    fn importTables(e: *Emitter, iface: *const Interface, imp: anytype, at: []const u8) Error!void {
+        for (iface.shared) |sh| try e.addProgramTable(sh.table, at, false);
+        for (iface.migrations) |m| {
+            const seen = for (e.imported_migrations.items) |prev| {
+                if (std.mem.eql(u8, prev.table, m.table)) break true;
+            } else false;
+            if (!seen) try e.imported_migrations.append(e.a, m);
+        }
+        for (iface.db_user) |f| {
+            const seen = for (e.db_user.items) |prev| {
+                if (std.mem.eql(u8, prev.name, f.name)) break true;
+            } else false;
+            if (!seen) try e.db_user.append(e.a, .{ .name = f.name, .setting = f.setting, .ty = try e.importedType(f.ty, imp.alias) });
+        }
+        for (iface.shared) |sh| {
+            if (!sh.own) continue;
+            const name = sh.table.decl.name;
+            if (!iface.exposesValue(try snake(e.a, name))) continue;
+            const t = try e.importedTable(sh.table, imp.alias);
+            const qualified = try std.fmt.allocPrint(e.a, "{s}.{s}", .{ imp.alias, name });
+            if (e.tables.contains(qualified)) return e.errAtRule(at, .table_decl, try std.fmt.allocPrint(e.a, "there is already a table '{s}'", .{qualified}));
+            try e.tables.put(e.a, qualified, t);
+            const list = imp.exposing orelse continue;
+            var names = std.mem.tokenizeAny(u8, list, ", \t\r\n");
+            while (names.next()) |n| if (std.mem.eql(u8, n, name)) {
+                if (e.tables.contains(name)) return e.errAtRule(n, .table_decl, try std.fmt.allocPrint(e.a, "there is already a table '{s}'", .{name}));
+                try e.tables.put(e.a, name, t);
+            };
+        }
+    }
 
     /// The functions of P302, by module: each takes the name of a collection
     /// or a field first.
@@ -2068,8 +2185,10 @@ pub const Emitter = struct {
         };
         try e.findSqlQuery(items);
         try query.resolveTables(e, items);
-        if (e.resolver) |r| if (r.schema != Resolver.noSchema) try migrate.check(e, items, r.schema(r.ctx, e.a));
         try e.loadImports(items);
+        // The app's schema.sql holds the tables of the whole program, so
+        // the app checks them; a module's tables come in through it.
+        if (moduleHeaderName(items) == null) if (e.resolver) |r| if (r.schema != Resolver.noSchema) try migrate.check(e, items, r.schema(r.ctx, e.a));
         try e.bindItems(items);
         if (moduleHeaderName(items) != null) {
             const iface = try e.interfaceOf(items);
@@ -2679,9 +2798,14 @@ pub const Emitter = struct {
             };
             const iface = try resolver.load(resolver.ctx, e.a, .{ .package = imp.package, .package_path = package_path, .module = imp.module }) orelse continue;
             try e.modules.put(e.a, imp.alias, iface);
+            try e.importTables(iface, imp, item.kind.raw);
             const list = imp.exposing orelse continue;
             var names = std.mem.tokenizeAny(u8, list, ", \t\r\n");
             while (names.next()) |raw| {
+                if (iface.tables.contains(raw)) {
+                    if (!iface.exposesValue(try snake(e.a, raw))) return e.errAtText(raw, try std.fmt.allocPrint(e.a, "{s} does not expose {s}", .{ imp.alias, raw }));
+                    continue;
+                }
                 if (iface.own_alias) |own| if (std.mem.eql(u8, raw, own)) {
                     try e.exposed_aliases.put(e.a, raw, try std.fmt.allocPrint(e.a, "{s}.{s}Alias", .{ imp.alias, own }));
                     continue;
@@ -2707,9 +2831,12 @@ pub const Emitter = struct {
         const span = exposingSpan(raw) orelse return e.w(raw);
         var list: std.ArrayList(u8) = .empty;
         var names = std.mem.tokenizeAny(u8, raw[span.open + 1 .. span.close], ", \t\r\n");
+        const iface: ?*const Interface = if (parseImport(raw)) |imp| e.modules.get(imp.alias) else null;
         while (names.next()) |n| {
             const name = if (std.mem.endsWith(u8, n, "(..)")) n[0 .. n.len - 4] else n;
             if (name.len == 0) continue;
+            // A table is not a value of the module in Roc.
+            if (iface) |i| if (i.tables.contains(name)) continue;
             // An alias with the module's name is used as `Grid.GridAlias`.
             if (e.exposed_aliases.contains(name)) continue;
             if (list.items.len > 0) try list.appendSlice(e.a, ", ");
@@ -2828,7 +2955,8 @@ pub const Emitter = struct {
                 try iface.types.put(e.a, tn.name, tags.items);
             },
             .type_alias => |ta| try iface.types.put(e.a, ta.name, &.{}),
-            .raw, .expect, .table, .migrate => {},
+            .table => |t| try iface.tables.put(e.a, t.name, {}),
+            .raw, .expect, .migrate => {},
         };
         if (moduleHeaderName(items)) |m| if (iface.types.get(m)) |tags| if (tags.len == 0 and !hasNominal(items, m)) {
             iface.own_alias = m;
@@ -2844,7 +2972,7 @@ pub const Emitter = struct {
         iface.exposing = try interface.parseExposing(e.a, list, snake);
         if (iface.exposing) |ex| for (ex.items.items) |raw| {
             const name = if (std.ascii.isUpper(raw[0])) raw[0 .. std.mem.findScalar(u8, raw, '(') orelse raw.len] else try snake(e.a, raw);
-            const known = if (std.ascii.isUpper(raw[0])) iface.types.contains(std.mem.trimEnd(u8, name, " ")) else iface.values.contains(name);
+            const known = if (std.ascii.isUpper(raw[0])) iface.types.contains(std.mem.trimEnd(u8, name, " ")) else iface.values.contains(name) or iface.tables.contains(raw);
             if (!known) return e.errAtText(raw, try std.fmt.allocPrint(e.a, "the module exposes '{s}', but does not define it", .{raw}));
         };
         return iface;
@@ -2968,6 +3096,21 @@ pub const Emitter = struct {
 
     /// A qualified name of a punkroc module that it does not expose is an
     /// error, as in Elm. Names of Roc modules are left to the Roc compiler.
+    /// A tag as Roc writes it. A tag of a type in another punk module is
+    /// `Ids.LinkId.LinkId` in Roc (the module, the type, the tag), where
+    /// punk writes `Ids.LinkId`; a tag of the module's own type stays
+    /// `Shape.Circle`.
+    pub fn tagName(e: *Emitter, raw: []const u8) Error![]const u8 {
+        const dot = std.mem.findScalarLast(u8, raw, '.') orelse return raw;
+        const module = raw[0..dot];
+        const iface = e.modules.get(module) orelse return raw;
+        if (iface.kind != .punk) return raw;
+        const ty = iface.tagType(raw[dot + 1 ..]) orelse return raw;
+        const last = if (std.mem.findScalarLast(u8, module, '.')) |d| module[d + 1 ..] else module;
+        if (std.mem.eql(u8, ty, last)) return raw;
+        return std.fmt.allocPrint(e.a, "{s}.{s}.{s}", .{ module, ty, raw[dot + 1 ..] });
+    }
+
     fn checkExposed(e: *Emitter, raw: []const u8) Error!void {
         return e.checkExposedAt(raw, raw);
     }
@@ -3012,6 +3155,7 @@ pub const Emitter = struct {
             }
             return fail(e.diag, line, col, message);
         }
+        if (e.foreign_at) |f| if (f.ptr != text.ptr) return e.errAtText(f, message);
         return e.errAt0(message);
     }
 
@@ -3242,7 +3386,7 @@ pub const Emitter = struct {
         if (f.* == .ident) return e.emitValueIdent(f.ident);
         if (f.* == .upper) {
             try e.checkExposed(f.upper);
-            return e.w(f.upper);
+            return e.w(try e.tagName(f.upper));
         }
         if (f.* == .lambda or !isAtomic(f)) {
             try e.w("(");
@@ -3391,11 +3535,12 @@ pub const Emitter = struct {
                 }
                 try e.emitValueIdent(name);
             },
-            .upper => |s| {
-                try e.checkExposed(s);
+            .upper => |raw_tag| {
+                try e.checkExposed(raw_tag);
+                const s = try e.tagName(raw_tag);
                 // A tag with arguments on its own is a function that makes
                 // it: `File.read path Loaded` is `|x| Loaded(x)`.
-                const n = e.tag_arity.get(s) orelse 0;
+                const n = e.tag_arity.get(raw_tag) orelse 0;
                 if (n == 0) return e.w(s);
                 try e.w("|");
                 for (0..n) |i| try e.buf.print(e.a, "{s}punk_t{d}", .{ if (i > 0) ", " else "", i + 1 });
@@ -3605,7 +3750,7 @@ pub const Emitter = struct {
             .underscore => |name| try e.wFrom(name, try snake(e.a, name)),
             .tag => |t| {
                 try e.checkExposed(t.name);
-                try e.w(t.name);
+                try e.w(try e.tagName(t.name));
                 if (t.args.len > 0) {
                     try e.w("(");
                     for (t.args, 0..) |arg, i| {

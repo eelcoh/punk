@@ -11,7 +11,6 @@ publish = false
 path = "src/lib.rs"
 
 [dependencies]
-ambit-lockdown = { git = "https://github.com/eelcoh/ambit", rev = "d039ab5afb81fe81faa5ce00c41e937e4879ea85" }
 bytes = "1"
 postgres = { version = "0.19", default-features = false }
 punk-server = { path = "../host" }
@@ -20,3 +19,7 @@ rustls-pki-types = { version = "1.16.0", features = ["std"] }
 tokio-postgres-rustls = "0.14.0"
 tracing = "0.1"
 webpki-roots = "1.0.12"
+
+# Locking a process down is for Linux and macOS: a Hermit unikernel is the whole machine.
+[target.'cfg(not(target_os = "hermit"))'.dependencies]
+ambit-lockdown = { git = "https://github.com/eelcoh/ambit", rev = "d039ab5afb81fe81faa5ce00c41e937e4879ea85" }

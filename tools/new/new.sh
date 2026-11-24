@@ -96,6 +96,10 @@ fill() {
         -e "s|@punk:platforms/server/host@|$(punk_dep platforms/server/host)|g" \
         -e "s|@punk:platforms/server/postgres@|$(punk_dep platforms/server/postgres)|g" \
         -e "s|@punk:platforms/tui/host@|$(punk_dep platforms/tui/host)|g" \
+        -e "s|@punk:platforms/server/hermit/vendor/ring@|$(punk_dep platforms/server/hermit/vendor/ring)|g" \
+        -e "s|@punk:platforms/server/hermit/vendor/socket2@|$(punk_dep platforms/server/hermit/vendor/socket2)|g" \
+        -e "s|@punk:platforms/server/hermit/vendor/tokio@|$(punk_dep platforms/server/hermit/vendor/tokio)|g" \
+        -e "s|@punk:platforms/server/hermit/vendor/whoami@|$(punk_dep platforms/server/hermit/vendor/whoami)|g" \
         -e "s|@platform@|$platform|g" \
         -e "s|@rust@|$rust|g" \
         -e "s|@version@|$version|g" \

@@ -5,6 +5,8 @@
 #   hosts' unit tests, the golden tests of examples/ (test/golden.sh), and
 #   the server and terminal apps, with Postgres and Mongo in postgres:16 and
 #   mongo:7 containers.
+# - hermit: on the same pushes and PRs, the tutorial's notes API as a Hermit
+#   unikernel in QEMU, against Postgres (test/hermit.sh).
 # - upstream: on the 1st and 15th of each month (and by hand), merge
 #   roc-lang/roc's main into eelcoh/roc's `punkroc` branch (Roc with the
 #   places that call punk's seam), run the same tests with that Roc, and
@@ -80,6 +82,27 @@ jobs:
             zig-deps-${{ runner.os }}-${{ runner.arch }}-
       - name: Build and test
         run: sh test/ci.sh
+
+  hermit:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    services:
+      postgres: *postgres
+    env:
+      PUNK_TEST_POSTGRES: postgres://postgres:punk@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6.0.2
+      - *setup_zig
+      - *cache_deps
+      - name: Build the compiler
+        run: zig build
+      - name: Install QEMU
+        run: sudo apt-get update -q && sudo apt-get install -y -q qemu-system-x86
+      - name: The notes API as a Hermit unikernel
+        run: sh test/hermit.sh
 
   upstream:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

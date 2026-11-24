@@ -130,4 +130,4 @@ server locks the process to its own port and the database's port (on Linux,
 with Landlock and seccomp), the image has no shell to break into, and the
 process has no rights in it.
 
-Next: [next steps](next.md).
+Next: the same server [as a unikernel](unikernel.md).

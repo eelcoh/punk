@@ -1,6 +1,7 @@
 # Next steps
 
-You have a JSON API with a database, a migration, tests and a container.
+You have a JSON API with a database, a migration, tests, a container and a
+unikernel.
 Some things to try next:
 
 - **Change a note.** Add `PUT /notes/<id>`. Ask your agent: with the skill
@@ -16,4 +17,3 @@ Some things to try next:
   language, and what each error code means.
 
 Next in this tutorial: [a terminal app](tui.md) on the `tui` platform.
-Coming: a unikernel.

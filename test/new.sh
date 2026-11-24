@@ -22,6 +22,8 @@ sh "$root/tools/new/new.sh" server my-notes
 grep -q '^FROM rust:[0-9.]*-slim-trixie AS build$' my-notes/Dockerfile
 grep -q '"/my-notes"' my-notes/Dockerfile
 test -f my-notes/.dockerignore
+test -f my-notes/server/src/hermit.rs
+grep -qF 'release/my-notes"' my-notes/server/unikernel.sh
 (cd my-notes/server && PUNK="$punk" cargo test)
 
 sh "$root/tools/new/new.sh" tui counter

@@ -42,7 +42,9 @@ jobs:
           if [ "$GITHUB_REF_TYPE" = tag ]; then v="$GITHUB_REF_NAME"; else v="v0.0.0-${GITHUB_SHA::7}"; fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
       - name: Build the compiler
-        run: zig build -Doptimize=ReleaseSafe
+        # For any CPU of the architecture, not only the runner's: a compiler built for an AMD
+        # runner's CPU stops with "Illegal instruction" on an Intel one.
+        run: zig build -Doptimize=ReleaseSafe -Dcpu=baseline
       - name: Build the cli platform's host
         run: sh test/setup.sh
       - name: Golden tests

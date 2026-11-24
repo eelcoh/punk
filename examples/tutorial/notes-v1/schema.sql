@@ -4,13 +4,13 @@
 -- the tables in the program, not this file.
 
 -- punk version 1
--- table notes : id Str key, title Str, body Str
+-- table notes : id Uuid key, title Str, body Str
 -- policy notes read true
 -- policy notes insert true
 -- policy notes update true
 -- policy notes delete true
 CREATE TABLE notes (
-    id text PRIMARY KEY,
+    id uuid PRIMARY KEY,
     title text NOT NULL,
     body text NOT NULL
 );

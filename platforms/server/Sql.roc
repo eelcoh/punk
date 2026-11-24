@@ -1,3 +1,6 @@
+import Time
+import Uuid
+
 ## Queries: SQL text that is part of the program, with the values for its
 ## parameters (`$1`, `$2`, ...) next to it. A value never becomes part of the
 ## SQL text, so a request can't change what a query does.
@@ -8,8 +11,8 @@ Sql := [].{
     ## SQL made from text.
     Query :: { sql : Str, params : List(Param) }
 
-    ## The value of one parameter. `kind` is 0 for NULL, 1 text, 2 int, 3 float
-    ## and 4 bool; `text` is the value written as text. The host turns it into
+    ## The value of one parameter. `kind` is 0 for NULL, 1 text, 2 int, 3 float,
+    ## 4 bool, 5 a time (milliseconds since 1970) and 6 a UUID; `text` is the value written as text. The host turns it into
     ## the type the database expects for that parameter, or fails the query.
     Param :: { kind : U8, text : Str }
 
@@ -38,6 +41,14 @@ Sql := [].{
 
     bool : Bool -> Param
     bool = |value| { kind: 4, text: if value "true" else "false" }
+
+    ## A time, for a `timestamptz` or `timestamp` parameter.
+    posix : Time.Posix -> Param
+    posix = |value| { kind: 5, text: Time.posix_to_millis(value).to_str() }
+
+    ## A UUID, for a `uuid` parameter.
+    uuid : Uuid -> Param
+    uuid = |value| { kind: 6, text: Uuid.to_string(value) }
 
     ## SQL's NULL, for a parameter of any type.
     null : Param

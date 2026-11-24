@@ -14,6 +14,9 @@ use punk_server_postgres::{Owner, testing};
 /// 2023-11-14 22:13:20 UTC, in milliseconds: the time of the notes the tests make.
 const NOW: i64 = 1_700_000_000_000;
 
+/// `NOW` as the JSON of a note has it.
+const NOW_ISO: &str = "2023-11-14T22:13:20.000Z";
+
 /// The API key of the tests: what `API_KEY` is set to.
 const KEY: &str = "test-key-7f3a";
 
@@ -49,7 +52,7 @@ fn send_with(
     (status, String::from_utf8(response.into_body()).unwrap())
 }
 
-/// The id in a note's JSON: `{"id":"n123","title":...}`.
+/// The id in a note's JSON: `{"id":"0190c3a5-...","title":...}`.
 fn id_of(json: &str) -> String {
     let rest = json.strip_prefix(r#"{"id":""#).expect(json);
     rest[..rest.find('"').unwrap()].to_owned()
@@ -75,8 +78,12 @@ fn a_new_note_can_be_read_back() {
     let id = id_of(&json);
     assert_eq!(
         json,
-        format!(r#"{{"id":"{id}","title":"Shopping","body":"milk, bread","created":{NOW}}}"#)
+        format!(r#"{{"id":"{id}","title":"Shopping","body":"milk, bread","created":"{NOW_ISO}"}}"#)
     );
+    // The id is a UUID (version 7: it starts with the time).
+    assert_eq!(id.len(), 36, "{id}");
+    assert_eq!(&id[14..15], "7", "{id}");
+    assert!(id.starts_with(&format!("{NOW:012x}")[..8]), "{id}");
     assert_eq!(
         send(&app, "GET", &format!("/notes/{id}"), ""),
         (StatusCode::OK, json)
@@ -111,6 +118,8 @@ fn a_note_can_be_deleted_once() {
     assert_eq!(send(&app, "DELETE", &uri, "").0, StatusCode::NO_CONTENT);
     assert_eq!(send(&app, "GET", &uri, "").0, StatusCode::NOT_FOUND);
     assert_eq!(send(&app, "DELETE", &uri, "").0, StatusCode::NOT_FOUND);
+    // An id that isn't a UUID is no note either.
+    assert_eq!(send(&app, "GET", "/notes/n1", "").0, StatusCode::NOT_FOUND);
 }
 
 #[test]
@@ -144,7 +153,7 @@ fn writing_needs_the_api_key() {
     assert_eq!(send_with(&app, None, "GET", &uri, "").0, StatusCode::OK);
     assert_eq!(
         send_with(&app, None, "GET", "/notes", "").1,
-        format!(r#"[{{"id":"{id}","title":"Kept","body":"safe","created":{NOW}}}]"#)
+        format!(r#"[{{"id":"{id}","title":"Kept","body":"safe","created":"{NOW_ISO}"}}]"#)
     );
 }
 
@@ -171,22 +180,28 @@ fn the_app_does_not_start_without_a_key() {
     assert_eq!(bad.problems, ["API_KEY is empty"]);
 }
 
-/// The migration of the tutorial: notes made before version 2 of `schema.sql` get `created` 0.
+/// The migration of the tutorial: notes made before version 2 of `schema.sql` get `created`
+/// `Time.millisToPosix 0`, 1970-01-01.
 #[test]
 fn the_migration_keeps_the_old_notes() {
+    const OLD: &str = "0190c3a5-7b1e-7cc0-8a3b-2f1e7d6c5b4a";
     let version_1 = notes::SCHEMA.split("-- punk version 2").next().unwrap();
     let Some((app, owner, _)) = app("migrate", version_1) else {
         return;
     };
     owner
-        .batch("INSERT INTO notes (id, title, body) VALUES ('n1', 'Before', 'version 1')")
+        .batch(&format!(
+            "INSERT INTO notes (id, title, body) VALUES ('{OLD}', 'Before', 'version 1')"
+        ))
         .unwrap();
     assert_eq!(owner.migrate(notes::SCHEMA).unwrap(), vec![2]);
     assert_eq!(
-        send(&app, "GET", "/notes/n1", ""),
+        send(&app, "GET", &format!("/notes/{OLD}"), ""),
         (
             StatusCode::OK,
-            r#"{"id":"n1","title":"Before","body":"version 1","created":0}"#.to_owned()
+            format!(
+                r#"{{"id":"{OLD}","title":"Before","body":"version 1","created":"1970-01-01T00:00:00.000Z"}}"#
+            )
         )
     );
 }

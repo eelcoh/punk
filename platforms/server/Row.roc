@@ -1,3 +1,6 @@
+import Time
+import Uuid
+
 ## Reading the rows a query gives, as Elm's `Json.Decode` reads JSON: a
 ## decoder says which columns a row has and what type each one is, and turns
 ## the row into a punk value.
@@ -12,7 +15,8 @@
 ## works on comes first. punk passes it last.)
 Row := [].{
     ## One value of a row as the host gives it. `kind` is 0 for NULL, 1 text,
-    ## 2 int, 3 float and 4 bool; `text` is the value written as text.
+    ## 2 int, 3 float, 4 bool, 5 a time (milliseconds since 1970) and 6 a
+    ## UUID; `text` is the value written as text.
     Cell : { kind : U8, text : Str }
 
     ## Turns a row (the names of its columns and its cells) into an `a`, or
@@ -87,6 +91,40 @@ Row := [].{
         },
     }
 
+    ## A column of type `timestamptz` or `timestamp` (a `timestamp` is read
+    ## as UTC).
+    posix : Column(Time.Posix)
+    posix = {
+        read: |cell| match cell.kind {
+            5 => match I64.from_str(cell.text) {
+                Ok(n) => Ok(Time.millis_to_posix(n))
+                Err(_) => Err("\"${cell.text}\" is not a time")
+            }
+            k => Err("expected a time, got ${kind_name(k)}")
+        },
+    }
+
+    ## A column of type `uuid`.
+    uuid : Column(Uuid)
+    uuid = {
+        read: |cell| match cell.kind {
+            6 => match Uuid.from_string(cell.text) {
+                Just(id) => Ok(id)
+                Nothing => Err("\"${cell.text}\" is not a UUID")
+            }
+            k => Err("expected a UUID, got ${kind_name(k)}")
+        },
+    }
+
+    ## A column read as another type: `Row.mapColumn LinkId Row.text`.
+    map_column : Column(a), (a -> b) -> Column(b)
+    map_column = |column, f| {
+        read: |cell| match (column.read)(cell) {
+            Ok(value) => Ok(f(value))
+            Err(problem) => Err(problem)
+        },
+    }
+
     ## A column that can be NULL: `Nothing` for NULL, `Just x` otherwise.
     nullable : Column(a) -> Column([Just(a), Nothing])
     nullable = |column| {
@@ -107,6 +145,8 @@ Row := [].{
         2 => "an int"
         3 => "a float"
         4 => "a bool"
+        5 => "a time"
+        6 => "a UUID"
         _ => "a value of an unknown kind"
     }
 

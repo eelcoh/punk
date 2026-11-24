@@ -4,13 +4,13 @@
 -- the tables in the program, not this file.
 
 -- punk version 1
--- table notes : id Str key, title Str, body Str
+-- table notes : id Uuid key, title Str, body Str
 -- policy notes read true
 -- policy notes insert true
 -- policy notes update true
 -- policy notes delete true
 CREATE TABLE notes (
-    id text PRIMARY KEY,
+    id uuid PRIMARY KEY,
     title text NOT NULL,
     body text NOT NULL
 );
@@ -22,7 +22,7 @@ CREATE POLICY notes_update ON notes FOR UPDATE USING (true) WITH CHECK (true);
 CREATE POLICY notes_delete ON notes FOR DELETE USING (true);
 
 -- punk version 2
--- table notes : id Str key, title Str, body Str, created Int
+-- table notes : id Uuid key, title Str, body Str, created Posix
 -- policy notes read true
 -- policy notes insert true
 -- policy notes update true
@@ -32,8 +32,8 @@ DROP POLICY IF EXISTS notes_insert ON notes;
 DROP POLICY IF EXISTS notes_update ON notes;
 DROP POLICY IF EXISTS notes_delete ON notes;
 ALTER TABLE notes NO FORCE ROW LEVEL SECURITY;
-ALTER TABLE notes ADD COLUMN created bigint;
-UPDATE notes SET created = 0;
+ALTER TABLE notes ADD COLUMN created timestamptz;
+UPDATE notes SET created = to_timestamp(0::double precision / 1000);
 ALTER TABLE notes ALTER COLUMN created SET NOT NULL;
 ALTER TABLE notes FORCE ROW LEVEL SECURITY;
 CREATE POLICY notes_read ON notes FOR SELECT USING (true);

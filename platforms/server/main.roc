@@ -5,7 +5,7 @@ platform ""
             handle! : settings, Http.Request => Http.Response,
         }
     }
-    exposes [Http, Clock, Random, Kv, Config, Secret, Log, Postgres, Sql, Row, Db, Mongo, Bson, Doc, Filter, Update]
+    exposes [Http, Clock, Random, Kv, Config, Secret, Time, Uuid, Log, Postgres, Sql, Row, Db, Mongo, Bson, Doc, Filter, Update]
     packages {}
     provides {
         "roc_check_settings": check_settings_for_host!,
@@ -54,6 +54,8 @@ import Random
 import Row
 import Secret
 import Sql
+import Time
+import Uuid
 
 ## Called by the host once, when the server starts: the app's settings
 ## decoder on the settings the wiring gives. Empty when they fit; otherwise

@@ -17,6 +17,46 @@ pub enum Value {
     Int(i64),
     Float(f64),
     Bool(bool),
+    /// A moment in time, as milliseconds since 1970-01-01 UTC (punk's `Posix`): a `timestamptz`.
+    Time(i64),
+    /// A UUID (punk's `Uuid`), its 16 bytes: a `uuid`.
+    Uuid([u8; 16]),
+}
+
+/// The 16 bytes of a UUID written as 32 hexadecimal digits, with or without the four `-` of
+/// `8-4-4-4-12`, in either case. `None` for anything else.
+pub fn parse_uuid(text: &str) -> Option<[u8; 16]> {
+    let digits: Vec<u8> = if text.len() == 36 {
+        for (i, c) in text.bytes().enumerate() {
+            if matches!(i, 8 | 13 | 18 | 23) != (c == b'-') {
+                return None;
+            }
+        }
+        text.bytes().filter(|c| *c != b'-').collect()
+    } else {
+        text.bytes().collect()
+    };
+    if digits.len() != 32 {
+        return None;
+    }
+    let mut bytes = [0u8; 16];
+    for (i, pair) in digits.chunks(2).enumerate() {
+        let hex = |c: u8| (c as char).to_digit(16);
+        bytes[i] = (hex(pair[0])? * 16 + hex(pair[1])?) as u8;
+    }
+    Some(bytes)
+}
+
+/// A UUID as `8-4-4-4-12` lowercase hexadecimal digits, as Postgres writes it.
+pub fn uuid_text(bytes: &[u8; 16]) -> String {
+    let mut out = String::with_capacity(36);
+    for (i, b) in bytes.iter().enumerate() {
+        if matches!(i, 4 | 6 | 8 | 10) {
+            out.push('-');
+        }
+        out.push_str(&format!("{b:02x}"));
+    }
+    out
 }
 
 /// What a query gave: the names of its columns, its rows, and how many rows it changed (for
@@ -156,6 +196,8 @@ pub(crate) const TEXT: u8 = 1;
 pub(crate) const INT: u8 = 2;
 pub(crate) const FLOAT: u8 = 3;
 pub(crate) const BOOL: u8 = 4;
+pub(crate) const TIME: u8 = 5;
+pub(crate) const UUID: u8 = 6;
 
 /// A value as punk writes it in a `Sql.Param`: its kind and its text. `None` when the text
 /// doesn't fit the kind (only a bug in `Sql.roc` makes one).
@@ -170,6 +212,8 @@ pub(crate) fn from_cell(kind: u8, text: &str) -> Option<Value> {
             "false" => Value::Bool(false),
             _ => return None,
         },
+        TIME => Value::Time(text.parse().ok()?),
+        UUID => Value::Uuid(parse_uuid(text)?),
         _ => return None,
     })
 }
@@ -182,6 +226,8 @@ pub(crate) fn to_cell(value: &Value) -> (u8, String) {
         Value::Int(n) => (INT, n.to_string()),
         Value::Float(x) => (FLOAT, float_text(*x)),
         Value::Bool(b) => (BOOL, if *b { "true" } else { "false" }.to_owned()),
+        Value::Time(ms) => (TIME, ms.to_string()),
+        Value::Uuid(bytes) => (UUID, uuid_text(bytes)),
     }
 }
 
@@ -210,6 +256,9 @@ mod tests {
             Value::Float(-2.5e-300),
             Value::Bool(true),
             Value::Bool(false),
+            Value::Time(-1),
+            Value::Time(1_764_000_000_123),
+            Value::Uuid(*b"0123456789abcdef"),
         ] {
             let (kind, text) = to_cell(&value);
             assert_eq!(from_cell(kind, &text), Some(value));
@@ -221,5 +270,14 @@ mod tests {
         assert_eq!(from_cell(INT, "12a"), None);
         assert_eq!(from_cell(BOOL, "yes"), None);
         assert_eq!(from_cell(9, ""), None);
+        assert_eq!(from_cell(UUID, "0190c3a5-7b1e-7cc0-8a3b-2f1e7d6c5b4"), None);
+        assert_eq!(from_cell(UUID, "0190c3a57-b1e-7cc0-8a3b-2f1e7d6c5b4a"), None);
+    }
+
+    #[test]
+    fn uuids_are_read_in_either_case() {
+        let bytes = parse_uuid("0190C3A5-7B1E-7CC0-8A3B-2F1E7D6C5B4A").unwrap();
+        assert_eq!(uuid_text(&bytes), "0190c3a5-7b1e-7cc0-8a3b-2f1e7d6c5b4a");
+        assert_eq!(parse_uuid("0190c3a57b1e7cc08a3b2f1e7d6c5b4a"), Some(bytes));
     }
 }

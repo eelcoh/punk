@@ -1,3 +1,5 @@
+import Time
+
 ## Documents for Mongo, written as Elm's `Json.Encode` writes JSON:
 ##
 ##     linkDocument : Link -> Bson.Value
@@ -55,10 +57,9 @@ Bson := [].{
     object_id : Str -> Value
     object_id = |hex| leaf(7, hex)
 
-    ## A moment in time, in milliseconds since 1970 (as `Clock.now!` gives
-    ## it), stored as Mongo's date.
-    time : I64 -> Value
-    time = |millis| leaf(8, millis.to_str())
+    ## A moment in time (as `Time.now!` gives it), stored as Mongo's date.
+    time : Time.Posix -> Value
+    time = |posix| leaf(8, Time.posix_to_millis(posix).to_str())
 
     ## A list of values, in punk `Bson.list [Bson.text "a", Bson.text "b"]`.
     list : List(Value) -> Value

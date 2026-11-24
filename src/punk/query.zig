@@ -43,32 +43,52 @@ pub const TableDecl = struct {
     pub const Line = struct { word: []const u8, arg: []const u8, policy: ?*Expr = null };
 };
 
-/// The type of a column: Str, Int, Float or Bool, or `Maybe` of one of
-/// these for a column that can be NULL.
+/// The type of a column: Str, Int, Float, Bool, Posix (a time) or Uuid, a
+/// type of the module that wraps one of these (`type LinkId = LinkId Str`),
+/// or `Maybe` of one of these for a column that can be NULL.
 pub const ColType = struct {
     base: Base,
     nullable: bool = false,
+    /// The type of the module around the base, if any.
+    wrap: ?Wrap = null,
 
-    pub const Base = enum { str, int, float, bool };
+    pub const Base = enum { str, int, float, bool, posix, uuid };
+
+    /// `type LinkId = LinkId Str`: the type's name and its one tag.
+    pub const Wrap = struct { name: []const u8, tag: []const u8 };
 
     pub fn eql(a: ColType, b: ColType) bool {
+        if ((a.wrap == null) != (b.wrap == null)) return false;
+        if (a.wrap) |w| if (!std.mem.eql(u8, w.name, b.wrap.?.name)) return false;
         return a.base == b.base and a.nullable == b.nullable;
     }
 
-    pub fn name(t: ColType, a: Allocator) Allocator.Error![]const u8 {
-        const base = switch (t.base) {
+    /// The type as the database stores it: without the wrapping type.
+    pub fn storage(t: ColType) ColType {
+        return .{ .base = t.base, .nullable = t.nullable };
+    }
+
+    pub fn baseName(b: Base) []const u8 {
+        return switch (b) {
             .str => "Str",
             .int => "Int",
             .float => "Float",
             .bool => "Bool",
+            .posix => "Posix",
+            .uuid => "Uuid",
         };
+    }
+
+    pub fn name(t: ColType, a: Allocator) Allocator.Error![]const u8 {
+        const base = if (t.wrap) |w| w.name else baseName(t.base);
         return if (t.nullable) std.fmt.allocPrint(a, "Maybe {s}", .{base}) else base;
     }
 
     /// The type's name after "a" or "an": "an Int", "a Maybe Str".
     pub fn an(t: ColType, a: Allocator) Allocator.Error![]const u8 {
         const n = try t.name(a);
-        return std.fmt.allocPrint(a, "{s} {s}", .{ if (n[0] == 'I') "an" else "a", n });
+        const vowel = std.mem.findScalar(u8, "AEIO", n[0]) != null;
+        return std.fmt.allocPrint(a, "{s} {s}", .{ if (vowel) "an" else "a", n });
     }
 };
 
@@ -181,8 +201,8 @@ fn resolveTable(e: *Emitter, items: []const tr.Item, decl: TableDecl) Error!*Tab
     }
     var columns: std.ArrayList(Column) = .empty;
     for (inner.record.fields) |f| {
-        const col_ty = columnType(f.ty) orelse {
-            return e.errAtRule(f.name, .table_decl, try std.fmt.allocPrint(a, "the column '{s}' of the table '{s}' can't be stored: a column is a Str, Int, Float or Bool, or a Maybe of one of these when it can be empty", .{ f.name, decl.name }));
+        const col_ty = columnType(items, f.ty) orelse {
+            return e.errAtRule(f.name, .table_decl, try std.fmt.allocPrint(a, "the column '{s}' of the table '{s}' can't be stored: a column is a Str, Int, Float, Bool, Posix or Uuid, a type with one tag that holds one of these (type LinkId = LinkId Str), or a Maybe of one of these when it can be empty", .{ f.name, decl.name }));
         };
         const plain = try tr.snake(a, f.name);
         try columns.append(a, .{ .name = f.name, .sql = try sqlIdent(a, plain), .plain = plain, .ty = col_ty });
@@ -292,18 +312,43 @@ fn findAlias(items: []const tr.Item, name: []const u8) ?*tr.Type {
     return null;
 }
 
-pub fn columnType(ty: *tr.Type) ?ColType {
+/// The column type of a field's type; `items` are the module's, for the
+/// types that wrap a base type (`type LinkId = LinkId Str`).
+pub fn columnType(items: []const tr.Item, ty: *tr.Type) ?ColType {
     switch (ty.*) {
-        .paren => |inner| return columnType(inner),
-        .name => |n| return .{ .base = baseType(n) orelse return null },
+        .paren => |inner| return columnType(items, inner),
+        .name => |n| {
+            if (baseType(n)) |b| return .{ .base = b };
+            return wrapType(items, n);
+        },
         .app => |app| {
             if (!std.mem.eql(u8, app.head, "Maybe") or app.args.len != 1) return null;
-            const inner = columnType(app.args[0]) orelse return null;
+            const inner = columnType(items, app.args[0]) orelse return null;
             if (inner.nullable) return null;
-            return .{ .base = inner.base, .nullable = true };
+            var t = inner;
+            t.nullable = true;
+            return t;
         },
         else => return null,
     }
+}
+
+/// `type LinkId = LinkId Str`: a type of the module with one tag that holds
+/// one value of a base type.
+fn wrapType(items: []const tr.Item, n: []const u8) ?ColType {
+    for (items) |item| if (item.kind == .type_nominal) {
+        const tn = item.kind.type_nominal;
+        if (!std.mem.eql(u8, tn.name, n) or tn.params.len != 0 or tn.alts.len != 1) continue;
+        var alt = tn.alts[0];
+        while (alt.* == .paren) alt = alt.paren;
+        if (alt.* != .app or alt.app.args.len != 1) return null;
+        var arg = alt.app.args[0];
+        while (arg.* == .paren) arg = arg.paren;
+        if (arg.* != .name) return null;
+        const b = baseType(arg.name) orelse return null;
+        return .{ .base = b, .wrap = .{ .name = tn.name, .tag = alt.app.head } };
+    };
+    return null;
 }
 
 fn baseType(n: []const u8) ?ColType.Base {
@@ -311,7 +356,9 @@ fn baseType(n: []const u8) ?ColType.Base {
         .{ "Str", .str },     .{ "String", .str },
         .{ "Int", .int },     .{ "I64", .int },
         .{ "Float", .float }, .{ "F64", .float },
-        .{ "Bool", .bool },
+        .{ "Bool", .bool },   .{ "Posix", .posix },
+        .{ "Time.Posix", .posix }, .{ "Uuid", .uuid },
+        .{ "Uuid.Uuid", .uuid },
     };
     inline for (names) |row| if (std.mem.eql(u8, n, row[0])) return row[1];
     return null;
@@ -354,6 +401,8 @@ pub fn sqlType(ty: ColType) []const u8 {
         .int => "bigint",
         .float => "double precision",
         .bool => "boolean",
+        .posix => "timestamptz",
+        .uuid => "uuid",
     };
 }
 
@@ -819,17 +868,16 @@ fn emitAs(e: *Emitter, name: []const u8, args: []*Expr, roc_fn: []const u8, what
     for (e.db_user.items, 0..) |f, i| {
         if (i > 0) try e.w(", ");
         try e.w(alias);
-        try e.w(switch (f.ty.base) {
-            .str => ".setting_text(\"",
-            .int => ".setting_int(\"",
-            .float => ".setting_float(\"",
-            .bool => ".setting_bool(\"",
-        });
+        try e.w(".setting_");
+        try e.w(kindName(f.ty.base));
+        try e.w("(\"");
         try e.w(f.setting);
         try e.w("\", ");
+        try unwrapOpen(e, f.ty);
         try e.w(tmp);
         try e.w(".");
         try e.w(try tr.snake(a, f.name));
+        try unwrapClose(e, f.ty);
         try e.w(")");
     }
     try e.w("], ");
@@ -1051,29 +1099,65 @@ fn unknownColumn(e: *Emitter, table: *const Table, name: []const u8) Error {
     return e.errAtRule(name, .query_type, try std.fmt.allocPrint(e.a, "the table '{s}' has no column '{s}' (it has {s})", .{ table.decl.name, name, try table.columnNames(e.a) }));
 }
 
+/// The name of a base type in the functions of `Db` (`param_text`).
+fn kindName(b: ColType.Base) []const u8 {
+    return switch (b) {
+        .str => "text",
+        .int => "int",
+        .float => "float",
+        .bool => "bool",
+        .posix => "posix",
+        .uuid => "uuid",
+    };
+}
+
+/// Around a value of a wrapping type (`type LinkId = LinkId Str`): the
+/// value it holds, `match x { LinkId(punk_w) => punk_w }`.
+fn unwrapOpen(e: *Emitter, ty: ColType) Error!void {
+    if (ty.wrap != null) try e.w("match ");
+}
+
+fn unwrapClose(e: *Emitter, ty: ColType) Error!void {
+    const w = ty.wrap orelse return;
+    try e.w(" { ");
+    try e.w(w.tag);
+    try e.w("(punk_w) => punk_w }");
+}
+
 fn emitParams(e: *Emitter, params: []const Param) Error!void {
     const alias = e.db_alias.?;
     try e.w("[");
     for (params, 0..) |p, i| {
         if (i > 0) try e.w(", ");
-        const base = switch (p.ty.base) {
-            .str => "param_text",
-            .int => "param_int",
-            .float => "param_float",
-            .bool => "param_bool",
-        };
+        const one = p.ty.storage();
         try e.w(alias);
-        if (p.ty.nullable) try e.w(".param_nullable(") else {
-            try e.w(".");
-            try e.w(base);
-            try e.w("(");
-        }
-        try e.emitExpr(p.expr);
         if (p.ty.nullable) {
+            try e.w(".param_nullable(");
+            try e.emitExpr(p.expr);
             try e.w(", ");
-            try e.w(alias);
-            try e.w(".");
-            try e.w(base);
+            if (p.ty.wrap != null) {
+                // `|punk_v| Db.param_text(match punk_v { LinkId(punk_w) => punk_w })`
+                try e.w("|punk_v| ");
+                try e.w(alias);
+                try e.w(".param_");
+                try e.w(kindName(one.base));
+                try e.w("(");
+                try unwrapOpen(e, p.ty);
+                try e.w("punk_v");
+                try unwrapClose(e, p.ty);
+                try e.w(")");
+            } else {
+                try e.w(alias);
+                try e.w(".param_");
+                try e.w(kindName(one.base));
+            }
+        } else {
+            try e.w(".param_");
+            try e.w(kindName(one.base));
+            try e.w("(");
+            try unwrapOpen(e, p.ty);
+            try e.emitExpr(p.expr);
+            try unwrapClose(e, p.ty);
         }
         try e.w(")");
     }
@@ -1132,19 +1216,22 @@ fn emitDecoder(e: *Emitter, table: *const Table, shape: Shape) Error!void {
 
 fn emitReader(e: *Emitter, ty: ColType) Error!void {
     const alias = e.db_alias.?;
-    const base = switch (ty.base) {
-        .str => "read_text",
-        .int => "read_int",
-        .float => "read_float",
-        .bool => "read_bool",
-    };
     if (ty.nullable) {
         try e.w(alias);
         try e.w(".read_nullable(");
     }
+    if (ty.wrap != null) {
+        try e.w(alias);
+        try e.w(".read_wrap(");
+    }
     try e.w(alias);
-    try e.w(".");
-    try e.w(base);
+    try e.w(".read_");
+    try e.w(kindName(ty.base));
+    if (ty.wrap) |w| {
+        try e.w(", |punk_w| ");
+        try e.w(w.tag);
+        try e.w("(punk_w))");
+    }
     if (ty.nullable) try e.w(")");
 }
 
@@ -1159,6 +1246,9 @@ fn checkLiteral(e: *Emitter, value: *Expr, ty: ColType, column: []const u8) Erro
         else => null,
     };
     const base = lit orelse return;
+    if (ty.wrap) |w| {
+        return e.errAtRule(exprText(v) orelse column, .query_type, try std.fmt.allocPrint(e.a, "this value doesn't fit {s}, which is {s}: give {s} ({s} {s})", .{ column, try ty.an(e.a), try (ColType{ .base = ty.base, .wrap = w }).an(e.a), w.tag, exprText(v) orelse "..." }));
+    }
     if (base == ty.base or (base == .int and ty.base == .float)) {
         if (!ty.nullable) return;
     }
@@ -1292,6 +1382,7 @@ pub const Sql = struct {
             .app => |app| {
                 if (try q.aggregate(x, app.func, app.args)) |ty| return ty;
                 if (try q.maybeField(app.func, app.args)) |ty| return ty;
+                if (try q.posixConstant(app.func, app.args)) |ty| return ty;
             },
             .field => |f| if (q.boundOf(f.target)) |b| {
                 if (b.maybe) {
@@ -1351,6 +1442,8 @@ pub const Sql = struct {
                     .int => "::bigint",
                     .float => "::double precision",
                     .bool => "::boolean",
+                    .posix => "::timestamptz",
+                    .uuid => "::uuid",
                 };
                 try q.out.print(a, "NULLIF(current_setting('{s}', true), ''){s}", .{ field.setting, cast });
                 return ty;
@@ -1373,12 +1466,18 @@ pub const Sql = struct {
                 }
                 try q.w("'");
                 const ty: ColType = .{ .base = .str };
-                if (want) |w_ty| try q.expectType(x, ty, w_ty, "the column it meets");
+                if (want) |w_ty| {
+                    try q.expectType(x, ty, w_ty.storage(), "the column it meets");
+                    return w_ty.storage();
+                }
                 return ty;
             },
             .literal => |l| {
-                const ty = literalType(x) orelse return q.notInPolicy(x);
-                if (want) |w_ty| try checkLiteral(q.e, x, w_ty, "the column it meets");
+                var ty = literalType(x) orelse return q.notInPolicy(x);
+                if (want) |w_ty| {
+                    try checkLiteral(q.e, x, w_ty.storage(), "the column it meets");
+                    if (w_ty.wrap != null) ty = w_ty.storage();
+                }
                 for (l) |c| if (c != '_') try q.out.append(a, c);
                 return ty;
             },
@@ -1488,6 +1587,29 @@ pub const Sql = struct {
         return .{ .base = col.ty.base, .nullable = true };
     }
 
+    /// `Time.millisToPosix 0` with a number written there: a constant time,
+    /// for a policy or a migration (`{ old | created = Time.millisToPosix 0 }`).
+    fn posixConstant(q: *Sql, func_in: *Expr, args: []*Expr) Error!?ColType {
+        const func = unparen(func_in);
+        if (func.* != .ident or args.len != 1) return null;
+        if (!std.mem.eql(u8, func.ident, "Time.millisToPosix")) return null;
+        var arg = unparen(args[0]);
+        var negative = false;
+        if (arg.* == .neg) {
+            negative = true;
+            arg = unparen(arg.neg);
+        }
+        const lit = literalType(arg);
+        if (arg.* != .literal or lit == null or lit.?.base != .int) {
+            return q.e.errAtRule(func.ident, .not_in_database, "here Time.millisToPosix takes a number written in the program: Time.millisToPosix 0");
+        }
+        try q.w("to_timestamp(");
+        if (negative) try q.w("-");
+        for (arg.literal) |c| if (c != '_') try q.out.append(q.e.a, c);
+        try q.w("::double precision / 1000)");
+        return .{ .base = .posix };
+    }
+
     fn notInPolicy(q: *Sql, x: *Expr) Error {
         if (q.user == null) {
             return q.e.errAtRule(exprText(x) orelse "", .not_in_database, try std.fmt.allocPrint(q.e.a, "{s} can use the columns of the row, constants, ==, /=, <, <=, >, >=, &&, ||, not, +, -, * and ++", .{q.what}));
@@ -1550,7 +1672,11 @@ pub const Sql = struct {
             try q.w(if (nullable) (if (std.mem.eql(u8, op, "==")) "IS NOT DISTINCT FROM" else "IS DISTINCT FROM") else sqlOp(op));
             try q.w(" ");
             const rt = try q.expr(rhs, lt, info.prec + 1);
-            if (!lt.eql(rt) and !(isNumber(lt) and isNumber(rt) and lt.nullable == rt.nullable)) {
+            // A policy and a migration are SQL of their own: there a value
+            // meets a column as the database stores it.
+            const lc = if (q.policy) lt.storage() else lt;
+            const rc = if (q.policy) rt.storage() else rt;
+            if (!lc.eql(rc) and !(isNumber(lc) and isNumber(rc) and lc.nullable == rc.nullable)) {
                 return q.e.errAtRule(op, .query_type, try std.fmt.allocPrint(a, "this compares {s} with {s}", .{ try lt.an(a), try rt.an(a) }));
             }
             return .{ .base = .bool };
@@ -1598,7 +1724,7 @@ fn isArith(op: []const u8) bool {
 }
 
 fn isNumber(t: ColType) bool {
-    return t.base == .int or t.base == .float;
+    return t.wrap == null and (t.base == .int or t.base == .float);
 }
 
 pub fn unparen(x_in: *Expr) *Expr {

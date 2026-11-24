@@ -1,10 +1,21 @@
 # punk-lang
 
-punk-lang is a small language for real applications: Elm's syntax and habits
-(whitespace, `f a b`, `|>`, `case ... of`, `Maybe`, hand-written JSON
+> punk-lang is a programming environment for building AI-generated
+> applications that humans can understand, compilers can constrain, and
+> infrastructure can safely operate.
+
+Agents write most of the code; people read it, design it and review it. So
+punk limits what an agent can do instead of asking it to behave: design rules
+the compiler enforces (no `crash`, only literal SQL, a policy on every table
+that becomes row-level security in Postgres), effects only through the
+capabilities a platform hands out, and errors that `punk check --json` gives
+to an agent with a code and a place.
+
+Underneath is a small language for real applications: Elm's syntax and
+habits (whitespace, `f a b`, `|>`, `case ... of`, `Maybe`, hand-written JSON
 decoders), compiled by the Roc compiler, on platforms whose hosts are Rust
-(on [ambit](https://github.com/eelcoh/ambit)). It is written mostly by
-agents and meant to be easy for a person to read: if it compiles, it runs.
+(on [ambit](https://github.com/eelcoh/ambit)). The aim: if it compiles, it
+runs.
 
 The language and its command are called `punk`, and its files end in
 `.punk`. "punk-lang" is the name to search for. It started as "punkroc", a

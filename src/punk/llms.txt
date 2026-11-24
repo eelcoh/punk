@@ -571,6 +571,10 @@ database for the rows there are (as in a query, without values from
 outside), and an old column the new row doesn't take is dropped. A constant time is
 `Time.millisToPosix 0`.
 
+A renamed table says `migrate links from urls` (with a function below it when
+its columns change too); a table that goes, with its rows, is `remove table
+visits`. A table gone from the program without one of these doesn't compile.
+
 ```
 Db.join : table -> (row -> row2 -> Bool) -> query -- JOIN ... ON; the steps after it take a row of each
 Db.leftJoin : table -> (row -> row2 -> Bool) -> query -- LEFT JOIN: the steps after it take a row and a Maybe row2

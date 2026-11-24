@@ -2277,6 +2277,79 @@ test "migrations: a version for each change of the tables" {
     try std.testing.expect(std.mem.find(u8, v2b[v2.len..], "CREATE POLICY links_read ON links FOR SELECT USING (owner = ") != null);
 }
 
+test "migrations: renaming and removing a table" {
+    var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    const v1 = try schemaOf(arena, links_v1, null);
+    const has = struct {
+        fn f(o: []const u8, part: []const u8) !void {
+            if (std.mem.find(u8, o, part) == null) {
+                std.debug.print("missing:\n{s}\nin:\n{s}\n", .{ part, o });
+                return error.TestUnexpectedResult;
+            }
+        }
+    }.f;
+    const urls = try std.mem.replaceOwned(u8, arena, links_v1, "table links : Link", "table urls : Link");
+
+    // A new name: the table keeps its rows, its policies get the new name.
+    const v2 = try schemaOf(arena, try std.mem.concat(arena, u8, &.{ urls, "\nmigrate urls from links\n" }), v1);
+    const step = v2[v1.len..];
+    try has(step, "-- table urls : id Str key, url Str, created Int, note Str\n");
+    try has(step, "ALTER TABLE links RENAME TO urls;\nDROP POLICY IF EXISTS links_read ON urls;\n");
+    try has(step, "CREATE POLICY urls_read ON urls FOR SELECT USING (true);\n");
+    try std.testing.expect(std.mem.find(u8, step, "-- table links") == null);
+    // Once done, the same program changes nothing more; then the migrate goes.
+    try std.testing.expectEqualStrings(v2, try schemaOf(arena, try std.mem.concat(arena, u8, &.{ urls, "\nmigrate urls from links\n" }), v2));
+    try std.testing.expectEqualStrings(v2, try schemaOf(arena, urls, v2));
+
+    // A new name and new columns at once.
+    const renamed_column = try std.mem.replaceOwned(u8, arena, urls, "created : Int", "createdAt : Int");
+    const v2c = try schemaOf(arena, try std.mem.concat(arena, u8, &.{ renamed_column, "\nmigrate urls from links\n    fn old -> { old | createdAt = old.created }\n" }), v1);
+    try has(v2c[v1.len..], "ALTER TABLE links RENAME TO urls;\n");
+    try has(v2c[v1.len..], "created_at");
+
+    // Removing a table, and its rows, is said in so many words.
+    const users =
+        \\type alias User =
+        \\    { id : Str
+        \\    }
+        \\
+        \\table users : User
+        \\    key id
+        \\    read everyone
+        \\    insert everyone
+        \\    update nobody
+        \\    delete nobody
+        \\
+    ;
+    const v3 = try schemaOf(arena, users ++ "\nremove table links\n", v1);
+    try has(v3[v1.len..], "DROP TABLE links;\n");
+    try has(v3[v1.len..], "CREATE TABLE users (");
+    try std.testing.expect(std.mem.find(u8, v3[v1.len..], "-- table links") == null);
+    try std.testing.expectEqualStrings(v3, try schemaOf(arena, users ++ "\nremove table links\n", v3));
+
+    // Errors: a table gone without a word, one removed that is still
+    // declared, a new name for a table schema.sql doesn't have.
+    const cases = [_]struct { src: []const u8, line: u32, msg: []const u8 }{
+        .{ .src = users, .line = 5, .msg = "'remove table links'" },
+        .{ .src = links_v1 ++ "\nremove table links\n", .line = 15, .msg = "still a table of the program" },
+        .{ .src = try std.mem.concat(arena, u8, &.{ urls, "\nmigrate urls from link\n" }), .line = 15, .msg = "no table 'link' to rename" },
+    };
+    for (cases) |c| {
+        var diag: punk.Diagnostic = .{};
+        if (punk.schema(arena, c.src, v1, &diag)) |_| {
+            std.debug.print("expected an error for:\n{s}\n", .{c.src});
+            return error.TestUnexpectedResult;
+        } else |_| {}
+        std.testing.expectEqual(c.line, diag.line) catch |err| {
+            std.debug.print("{s}\n", .{diag.message});
+            return err;
+        };
+        try has(diag.message, c.msg);
+    }
+}
+
 test "rules: migrations (P405)" {
     var arena_state = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_state.deinit();

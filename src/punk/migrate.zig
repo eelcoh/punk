@@ -22,6 +22,12 @@
 //!   that the new row doesn't take is dropped. `{ old | ... }` keeps the
 //!   columns it doesn't name.
 //!
+//! A table with a new name says so, `migrate links from urls` (with a
+//! function below it when the columns change too): `ALTER TABLE ... RENAME`.
+//! A table that goes, with its rows, says `remove table urls`. A table of
+//! `schema.sql` that is gone from the program without either is an error, so
+//! rows are never dropped by accident.
+//!
 //! Without the migration the program doesn't compile (P405), so the database
 //! always holds what the program declares. `punk check --schema app.punk`
 //! adds the new version to `schema.sql` and says what it does; after that the
@@ -41,7 +47,13 @@ const Op = query.Op;
 /// `migrate links` and its function, as the parser reads it.
 pub const MigrateDecl = struct {
     table: []const u8,
-    func: *Expr,
+    /// `fn old -> { old | ... }`; null for a rename without other changes
+    /// and for a removal.
+    func: ?*Expr,
+    /// `migrate links from urls`: the table's name in schema.sql.
+    from: ?[]const u8 = null,
+    /// `remove table urls`: the table and its rows go.
+    remove: bool = false,
 };
 
 /// A table as a version of the schema records it.
@@ -110,16 +122,39 @@ pub fn history(e: *Emitter, items: []const tr.Item, existing: ?[]const u8) Error
     var report: std.ArrayList(u8) = .empty;
     const version = old.version + 1;
 
-    // Tables that went away.
-    for (old.tables) |snap| {
-        if (programTable(e, snap.name) == null) {
-            const at = for (migrations.items) |m| {
-                if (std.mem.eql(u8, m.table, snap.name)) break m.table;
-            } else "";
-            return e.errAtRule(at, .migration, try std.fmt.allocPrint(a, "the table '{s}' of schema.sql version {d} is gone from the program; punk can't remove a table yet, so keep its declaration", .{ snap.name, old.version }));
+    // A rename names a table that schema.sql has (or had, before the
+    // rename was made).
+    for (migrations.items) |m| if (m.from) |f| {
+        if (findSnap(old.tables, f) == null and findSnap(old.tables, m.table) == null) {
+            return e.errAtRule(f, .migration, try std.fmt.allocPrint(a, "schema.sql has no table '{s}' to rename", .{f}));
         }
+    };
+
+    // Tables that went away: removed, or renamed (`migrate links from urls`).
+    for (old.tables) |snap| {
+        if (programTable(e, snap.name) != null) continue;
+        const removed = for (migrations.items) |m| {
+            if (m.remove and std.mem.eql(u8, m.table, snap.name)) break true;
+        } else false;
+        const renamed = for (migrations.items) |m| {
+            if (m.from) |f| if (std.mem.eql(u8, f, snap.name)) break true;
+        } else false;
+        if (removed) {
+            try body.print(a, "DROP TABLE {s};\n", .{try query.sqlIdent(a, try tr.snake(a, snap.name))});
+            try report.print(a, "  {s}: removed, with its rows\n", .{snap.name});
+            continue;
+        }
+        if (renamed) continue;
+        const at = if (e.program_tables.items.len > 0) e.program_tables.items[0].at else "";
+        return e.errAtRule(at, .migration, try std.fmt.allocPrint(a, "the table '{s}' of schema.sql version {d} is gone from the program. If it has a new name, say so next to its declaration: 'migrate <new name> from {s}'. To remove it and its rows, write 'remove table {s}'", .{ snap.name, old.version, snap.name, snap.name }));
     }
     for (migrations.items) |m| {
+        if (m.remove) {
+            if (programTable(e, m.table) != null) {
+                return e.errAtRule(m.table, .migration, try std.fmt.allocPrint(a, "'{s}' is still a table of the program: remove its declaration too, or keep the table", .{m.table}));
+            }
+            continue;
+        }
         if (programTable(e, m.table) == null) {
             return e.errAtRule(m.table, .migration, try std.fmt.allocPrint(a, "'{s}' is not a table of this module", .{m.table}));
         }
@@ -129,10 +164,41 @@ pub fn history(e: *Emitter, items: []const tr.Item, existing: ?[]const u8) Error
         // An error about a table of another module points at its import.
         e.foreign_at = pt.at;
         defer e.foreign_at = null;
-        const snap = findSnap(old.tables, t.decl.name);
-        const mig = for (migrations.items) |m| {
-            if (std.mem.eql(u8, m.table, t.decl.name)) break m;
+        var snap = findSnap(old.tables, t.decl.name);
+        var mig = for (migrations.items) |m| {
+            if (!m.remove and std.mem.eql(u8, m.table, t.decl.name)) break m;
         } else null;
+        if (mig) |m| if (m.from) |from| rename: {
+            if (snap != null) {
+                // Done already when the old name is gone from schema.sql
+                // (check says to remove the migrate); otherwise both names
+                // are tables there.
+                if (findSnap(old.tables, from) == null) {
+                    mig = null;
+                    break :rename;
+                }
+                return e.errAtRule(m.table, .migration, try std.fmt.allocPrint(a, "schema.sql has a table '{s}' already, so '{s}' can't get its name", .{ t.decl.name, from }));
+            }
+            const was = findSnap(old.tables, from) orelse {
+                return e.errAtRule(from, .migration, try std.fmt.allocPrint(a, "schema.sql has no table '{s}' to rename", .{from}));
+            };
+            // The table gets its new name, and its policies are made
+            // again under it; then its columns change as for any table.
+            const from_sql = try query.sqlIdent(a, try tr.snake(a, from));
+            try body.print(a, "ALTER TABLE {s} RENAME TO {s};\n", .{ from_sql, t.sql });
+            for (0..4) |i| {
+                const op: Op = @fromBackingInt(@intCast(i));
+                try body.print(a, "DROP POLICY IF EXISTS {s} ON {s};\n", .{ try query.policyName(a, try tr.snake(a, from), op), t.sql });
+            }
+            try query.policiesSql(a, &body, t);
+            try report.print(a, "  {s}: renamed from {s}\n", .{ t.decl.name, from });
+            const renamed = try a.create(Snap);
+            renamed.* = was.*;
+            renamed.name = t.decl.name;
+            for (t.access, 0..) |access, i| renamed.policies[i] = query.policyCond(access);
+            snap = renamed;
+            if (m.func == null) mig = null;
+        };
         if (snap == null) {
             if (mig) |m| return e.errAtRule(m.table, .migration, try std.fmt.allocPrint(a, "the table '{s}' is new, so it has no rows to migrate: remove the migrate", .{m.table}));
             try query.createSql(a, &body, t);
@@ -188,7 +254,9 @@ pub fn check(e: *Emitter, items: []const tr.Item, existing: ?[]const u8) Error!v
     }
     // Up to date: a migrate still there has been done.
     for (items) |item| if (item.kind == .migrate) {
-        return e.errAtRule(item.kind.migrate.table, .migration, try std.fmt.allocPrint(a, "the migration of '{s}' is in schema.sql already: remove the migrate", .{item.kind.migrate.table}));
+        const m = item.kind.migrate;
+        if (m.remove) return e.errAtRule(m.table, .migration, try std.fmt.allocPrint(a, "schema.sql has removed the table '{s}' already: remove the line 'remove table {s}'", .{ m.table, m.table }));
+        return e.errAtRule(m.table, .migration, try std.fmt.allocPrint(a, "the migration of '{s}' is in schema.sql already: remove the migrate", .{m.table}));
     };
     for (e.imported_migrations.items) |m| {
         const at = if (programTable(e, m.table)) |pt| pt.at else first;
@@ -322,6 +390,7 @@ fn tableChange(e: *Emitter, t: *const Table, snap: *const Snap, mig: ?MigrateDec
         return;
     }
     if (columns_same) {
+        if (mig.?.from) |from| return e.errAtRule(mig.?.table, .migration, try std.fmt.allocPrint(a, "the columns of '{s}' are those of '{s}' in schema.sql: keep 'migrate {s} from {s}' and remove the function below it", .{ t.decl.name, from, t.decl.name, from }));
         return e.errAtRule(mig.?.table, .migration, try std.fmt.allocPrint(a, "the columns of '{s}' are what schema.sql says already: remove the migrate", .{t.decl.name}));
     }
 
@@ -401,7 +470,7 @@ const Plan = struct {
         const a = e.a;
         const t = plan.t;
         const lam = blk: {
-            const x = query.unparen(m.func);
+            const x = query.unparen(m.func orelse break :blk null);
             if (x.* != .lambda or x.lambda.params.len != 1 or x.lambda.body.stmts.len > 0 or x.lambda.body.result == null) break :blk null;
             break :blk x.lambda;
         } orelse return e.errAtRule(m.table, .migration, try std.fmt.allocPrint(a, "a migration is a function of the old row that gives the new one: migrate {s}\n    fn old -> {{ old | ... }}", .{m.table}));

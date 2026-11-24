@@ -116,8 +116,12 @@ findLink = fn id ->
   `Db.groupBy .owner` the functions take the key and the rows of a group
   (`GROUP BY`), and the `map` names what each group gives:
   `Db.map (fn owner, rows -> { owner, n = Db.count rows, total = Db.sum .amount rows })`,
-  with `Db.count`, `Db.sum`, `Db.min`, `Db.max` and `Db.avg`. Grouping works
-  on one table for now.
+  with `Db.count`, `Db.sum`, `Db.min`, `Db.max` and `Db.avg`. A `Db.filter`
+  after the `groupBy` keeps groups (`HAVING`):
+  `Db.filter (fn _, rows -> Db.count rows >= 2)`. A join groups too: the key
+  takes a row of each table (`Db.groupBy (fn _, person -> person.name)`), and
+  so do the functions of the aggregates (`Db.max (fn note, _ -> note.body) rows`).
+  `examples/notes` has both in `busyWriters`.
 - **Column types.** A column is a `Str`, `Int`, `Float`, `Bool`, `Posix`
   (`Time`), `Uuid`, `Dec` or `Value` (JSON, from the `json` package), or a
   `Maybe` of one when it can be empty. A type of
@@ -250,8 +254,8 @@ findLink = fn id ->
   it is `Database::begin`, which gives a `Transaction` (`run`, `commit`;
   dropping it rolls back). `examples/notes` pins one note per user this
   way.
-- **SQL by hand stays.** For what the language can't do yet (grouping a
-  join, `HAVING`, subqueries), `Sql.query` and `Row` below are the escape hatch.
+- **SQL by hand stays.** For what the language can't do yet (subqueries,
+  `UNION`, window functions), `Sql.query` and `Row` below are the escape hatch.
 
 ## Postgres: SQL by hand
 
@@ -626,7 +630,6 @@ shortener checks it too).
 
 ## Not there yet
 
-- The query language: grouping a join, filtering groups (`HAVING`).
 - On hermit: `sslrootcert` (a unikernel has no files) and a test of host
   names (DNS); see `hermit/README.md`. Certificates for the app itself
   (`sslcert`, `tlsCertificateKeyFile`).

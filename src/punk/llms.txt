@@ -580,6 +580,7 @@ Db.join : table -> (row -> row2 -> Bool) -> query -- JOIN ... ON; the steps afte
 Db.leftJoin : table -> (row -> row2 -> Bool) -> query -- LEFT JOIN: the steps after it take a row and a Maybe row2
 Db.filter : (row -> Bool) -> query -> query       -- several filters: AND
 Db.groupBy : (row -> key) -> query -> query       -- GROUP BY: the steps after it take the key and the rows
+                                                  -- a Db.filter after it keeps groups: HAVING
 Db.count : rows -> Int                            -- in the map after a groupBy: COUNT(*)
 Db.sum : (row -> number) -> rows -> number        -- SUM; Db.min, Db.max keep the column type
 Db.avg : (row -> number) -> rows -> Float         -- AVG
@@ -602,8 +603,8 @@ Db.toSql : Db.Query a -> Str
 ```
 
 Joins, sorting and paging stay one SQL statement. The steps come in this
-order: `join` (or `leftJoin`), `filter`, `groupBy`, `sortBy`, `drop`, `take`,
-`map`; after a `join` each
+order: `join` (or `leftJoin`), `filter`, `groupBy` (and filters of groups),
+`sortBy`, `drop`, `take`, `map`; after a `join` each
 function takes a row of each table, and the query ends with a `map` that
 names what it gives:
 
@@ -623,8 +624,10 @@ publicNotes =
 A `leftJoin` keeps the rows that have no match: the joined row is a `Maybe`
 (in its own condition it isn't). Take a column with `Maybe.map .name person`,
 or test `person == Nothing`. A `groupBy` gives one row for each key, and the
-`map` after it says what: the key, and aggregates of the rows. It works on one
-table for now.
+`map` after it says what: the key, and aggregates of the rows. A `filter`
+after the `groupBy` takes the key and the rows, and keeps groups (`HAVING`).
+After a `join`, the key and the functions of the aggregates take a row of each
+table.
 
 ```
 allPublicNotes : Db.Query (List { name : Maybe Str, body : Str })
@@ -641,6 +644,15 @@ writers =
         |> Db.groupBy .owner
         |> Db.sortBy (fn owner, _ -> owner)
         |> Db.map (fn owner, rows -> { owner, count = Db.count rows, first = Db.min .body rows })
+        |> Db.all
+
+busyWriters : Db.Query (List { name : Str, count : Int, last : Str })
+busyWriters =
+    notes
+        |> Db.join people (fn note, person -> note.owner == person.id)
+        |> Db.groupBy (fn _, person -> person.name)
+        |> Db.filter (fn _, rows -> Db.count rows >= 2)
+        |> Db.map (fn name, rows -> { name, count = Db.count rows, last = Db.max (fn note, _ -> note.body) rows })
         |> Db.all
 ```
 
@@ -666,7 +678,7 @@ parameters), `==`, `/=`, `<`, `<=`, `>`, `>=`, `&&`, `||`, `not`, `+`, `-`,
 `*` and `++`; anything else is P402: compute it before the query. A query
 has at most one `map`, `take` and `drop`; `update` and `delete` only take
 filters. A table's name is not a value: it only starts a query. For what the
-query language can't do yet (left joins, aggregates, grouping), write the
+query language can't do yet (subqueries, `UNION`, window functions), write the
 SQL yourself with `Sql.query`:
 
 ### Postgres: SQL by hand

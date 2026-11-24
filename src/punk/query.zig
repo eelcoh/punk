@@ -628,10 +628,13 @@ pub fn emit(e: *Emitter, name: []const u8, m: Member, args: []*Expr) Error!void 
     var take: ?Step = null;
     var map: ?Step = null;
     var group_by: ?Step = null;
+    // The filters after a `Db.groupBy` keep groups (`HAVING`).
+    var havings: std.ArrayList(Step) = .empty;
     for (steps.items) |s| {
-        const ph = s.phase();
+        const having = s.kind == .filter and group_by != null;
+        const ph: u8 = if (having) 2 else s.phase();
         if (ph < last_phase) {
-            return e.errAtRule(s.name, .not_in_database, try std.fmt.allocPrint(a, "the steps of a query come in this order: {s}.join (or {s}.leftJoin), {s}.filter, {s}.groupBy, {s}.sortBy, {s}.drop, {s}.take, {s}.map; '{s}' comes earlier", .{ alias, alias, alias, alias, alias, alias, alias, alias, s.name }));
+            return e.errAtRule(s.name, .not_in_database, try std.fmt.allocPrint(a, "the steps of a query come in this order: {s}.join (or {s}.leftJoin), {s}.filter, {s}.groupBy (with filters of groups after it), {s}.sortBy, {s}.drop, {s}.take, {s}.map; '{s}' comes earlier", .{ alias, alias, alias, alias, alias, alias, alias, alias, s.name }));
         }
         last_phase = ph;
         switch (s.kind) {
@@ -639,7 +642,7 @@ pub fn emit(e: *Emitter, name: []const u8, m: Member, args: []*Expr) Error!void 
                 try joins.append(a, s);
                 try sources.append(a, .{ .table = s.table.?, .alias = null, .maybe = s.kind == .leftJoin });
             },
-            .filter => try filters.append(a, s),
+            .filter => try (if (having) &havings else &filters).append(a, s),
             .sortBy, .sortByDescending => try sorts.append(a, s),
             .drop, .take, .map, .groupBy => {
                 const slot = switch (s.kind) {
@@ -672,10 +675,7 @@ pub fn emit(e: *Emitter, name: []const u8, m: Member, args: []*Expr) Error!void 
     if (m == .first and take != null) {
         return e.errAtRule(take.?.name, .not_in_database, try std.fmt.allocPrint(a, "{s}.first takes one row already: leave out the {s}.take", .{ alias, alias }));
     }
-    if (group_by) |g| {
-        if (joins.items.len > 0) {
-            return e.errAtRule(g.name, .not_in_database, try std.fmt.allocPrint(a, "{s}.groupBy works on one table for now: a query with a join can't group its rows", .{alias}));
-        }
+    if (group_by != null) {
         if (map == null) {
             return e.errAtRule(name, .not_in_database, try std.fmt.allocPrint(a, "a query with {s}.groupBy says what it gives for each group: {s}.map (fn owner, rows -> {{ owner, n = {s}.count rows }})", .{ alias, alias, alias }));
         }
@@ -693,7 +693,7 @@ pub fn emit(e: *Emitter, name: []const u8, m: Member, args: []*Expr) Error!void 
     // The key of a `Db.groupBy`, and what its map and sorts see.
     var group: ?Group = null;
     if (group_by) |g| {
-        const lam = try rowLambda(e, g.arg, g.name, 1);
+        const lam = try rowLambda(e, g.arg, g.name, sources.items.len);
         var key_sql: std.ArrayList(u8) = .empty;
         var q: Sql = .{ .e = e, .table = table, .row = null, .out = &key_sql, .params = &params_early, .bound = try bind(a, sources.items, lam.rows) };
         const key_ty = try q.expr(lam.body, null, 0);
@@ -742,6 +742,21 @@ pub fn emit(e: *Emitter, name: []const u8, m: Member, args: []*Expr) Error!void 
         }
     }
     if (group) |g| try sql.print(a, " GROUP BY {s}", .{g.key_sql});
+    if (havings.items.len > 0) {
+        try sql.appendSlice(a, " HAVING ");
+        for (havings.items, 0..) |h, i| {
+            if (i > 0) try sql.appendSlice(a, " AND ");
+            const lam = try rowLambda(e, h.arg, h.name, 2);
+            const many = havings.items.len > 1 and lam.body.* == .binop and std.mem.eql(u8, lam.body.binop.op, "||");
+            if (many) try sql.appendSlice(a, "(");
+            var q: Sql = .{ .e = e, .table = table, .row = null, .out = &sql, .params = params, .group = try groupFor(a, group, sources.items, lam.rows) };
+            const ty = try q.expr(lam.body, .{ .base = .bool }, 0);
+            if (many) try sql.appendSlice(a, ")");
+            if (ty.base != .bool or ty.nullable) {
+                return e.errAtRule(lam.at, .query_type, try std.fmt.allocPrint(a, "a filter after a groupBy gives a Bool, true for the groups to keep, but this one gives {s}", .{try ty.an(a)}));
+            }
+        }
+    }
     if (sorts.items.len > 0) {
         // As with List.sortBy, the last sort decides first: it sorts what
         // the ones before it sorted.
@@ -838,14 +853,14 @@ pub const GroupScope = struct {
     rows: ?[]const u8,
     key_sql: []const u8,
     key_ty: ColType,
-    /// The table the rows of a group come from.
-    source: Source,
+    /// The tables the rows of a group come from: one, or each of a join.
+    sources: []const Source,
 };
 
 fn groupFor(a: Allocator, group: ?Group, sources: []const Source, names: []const ?[]const u8) Allocator.Error!?*const GroupScope {
     const g = group orelse return null;
     const scope = try a.create(GroupScope);
-    scope.* = .{ .key = names[0], .rows = names[1], .key_sql = g.key_sql, .key_ty = g.key_ty, .source = sources[0] };
+    scope.* = .{ .key = names[0], .rows = names[1], .key_sql = g.key_sql, .key_ty = g.key_ty, .sources = sources };
     return scope;
 }
 
@@ -1548,8 +1563,14 @@ pub const Sql = struct {
             try q.w("COUNT(*)");
             return .{ .base = .int };
         }
-        const lam = try rowLambda(q.e, args[0], name, 1);
-        var inner: Sql = .{ .e = q.e, .table = g.source.table, .row = null, .out = q.out, .params = q.params, .bound = try bind(a, &.{g.source}, lam.rows) };
+        if (g.sources.len > 1) {
+            const f = unparen(args[0]);
+            if (f.* != .lambda or f.lambda.params.len != g.sources.len) {
+                return q.e.errAtRule(name, .not_in_database, try std.fmt.allocPrint(a, "the rows of a group of a join are pairs, so '{s}' takes a function of a row of each table: {s} (fn link, user -> link.clicks) {s}", .{ name, name, g.rows orelse "rows" }));
+            }
+        }
+        const lam = try rowLambda(q.e, args[0], name, g.sources.len);
+        var inner: Sql = .{ .e = q.e, .table = g.sources[0].table, .row = null, .out = q.out, .params = q.params, .bound = try bind(a, g.sources, lam.rows) };
         const fn_name = switch (m) {
             .sum => "SUM",
             .min => "MIN",

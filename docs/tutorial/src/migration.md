@@ -9,7 +9,7 @@ program, say how an old row becomes a new one, and `punk check --schema`
 writes the next version of `schema.sql`. The server applies it when it
 starts.
 
-The app after this page is
+The app after this page and the next is
 [`examples/tutorial/notes/Notes.punk`](https://github.com/eelcoh/punk/blob/main/examples/tutorial/notes/Notes.punk).
 
 ## Change the table
@@ -157,4 +157,4 @@ git add -A
 git commit -m "Notes: newest first"
 ```
 
-Next: [in a container](container.md).
+Next: [settings and a secret](settings.md).

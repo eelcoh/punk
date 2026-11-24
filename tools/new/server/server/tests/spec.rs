@@ -8,12 +8,14 @@ use std::time::{Duration, UNIX_EPOCH};
 use ambit_server::Handler;
 use ambit_server::http::StatusCode;
 use ambit_server_sim::{SeededRandom, SimClock, request};
+use punk_server::Settings;
 use punk_server_postgres::{Owner, testing};
 
 fn setup(name: &str) -> Option<(impl Handler, Owner)> {
     let (owner, db) = testing::database(&format!("@crate@_{name}"), @crate@::SCHEMA)?;
     let clock = SimClock::at(UNIX_EPOCH + Duration::from_secs(1_700_000_000));
-    Some((@crate@::init(clock, SeededRandom::new(1), db), owner))
+    Some((@crate@::init(clock, SeededRandom::new(1), db, Settings::new())
+        .expect("the app needs no settings"), owner))
 }
 
 fn send(app: &impl Handler, method: &str, uri: &str, body: &str) -> (StatusCode, String) {

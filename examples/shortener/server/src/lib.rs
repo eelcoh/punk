@@ -18,40 +18,10 @@ pub struct Config {
 
 /// The app's capabilities: this signature is everything it can do.
 pub fn init(clock: impl Clock, random: impl Random, kv: impl Kv, config: Config) -> impl Handler {
-    // What the punk app reads with `Config.text!` and its `settings` decoder.
-    let json = format!(
-        r#"{{"baseUrl":{},"ttlSeconds":{}}}"#,
-        json_string(&config.base_url),
-        config.ttl.as_secs()
-    );
-    punk_server::App::new(clock, random, kv, json)
-}
-
-/// `text` as a JSON string.
-fn json_string(text: &str) -> String {
-    let mut out = String::with_capacity(text.len() + 2);
-    out.push('"');
-    for c in text.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::json_string;
-
-    #[test]
-    fn strings_are_escaped() {
-        assert_eq!(json_string("a\"b\\c\n\u{1}"), r#""a\"b\\c\n\u0001""#);
-    }
+    // What the punk app's `settings` decoder reads.
+    let settings = punk_server::Settings::new()
+        .set("BASE_URL", config.base_url)
+        .set("TTL_SECONDS", config.ttl.as_secs().to_string());
+    punk_server::App::new(clock, random, kv, settings)
+        .expect("the settings are made from a `Config`, so they fit the app")
 }

@@ -8,14 +8,15 @@ use std::time::{Duration, UNIX_EPOCH};
 use ambit_server::Handler;
 use ambit_server::http::{HeaderValue, Request, StatusCode};
 use ambit_server_sim::{SeededRandom, SimClock, request};
-use punk_server::{Database, Value};
+use punk_server::{Database, Settings, Value};
 use punk_server_postgres::{Owner, Postgres, testing};
 
 fn setup(name: &str) -> Option<(impl Handler, std::sync::Arc<Postgres>, Owner)> {
     let (owner, db) = testing::database(&format!("punk_notes_{name}"), notes::SCHEMA)?;
     let db = std::sync::Arc::new(db);
     let clock = SimClock::at(UNIX_EPOCH + Duration::from_secs(1_700_000_000));
-    let app = notes::init(clock, SeededRandom::new(1), db.clone());
+    let app = notes::init(clock, SeededRandom::new(1), db.clone(), Settings::new())
+        .expect("the app needs no settings");
     Some((app, db, owner))
 }
 
@@ -169,7 +170,8 @@ fn notes_from_before_version_2_are_kept() {
     assert!(owner.migrate(notes::SCHEMA).unwrap().is_empty());
     let db = std::sync::Arc::new(db);
     let clock = SimClock::at(UNIX_EPOCH + Duration::from_secs(1_700_000_000));
-    let app = notes::init(clock, SeededRandom::new(1), db.clone());
+    let app = notes::init(clock, SeededRandom::new(1), db.clone(), Settings::new())
+        .expect("the app needs no settings");
     assert_eq!(texts(&app, Some("ann")), ["private from before"]);
     assert!(texts(&app, Some("bob")).is_empty());
     let delete = by(Some("ann"), "DELETE", "/notes/n1", "");
@@ -208,7 +210,10 @@ fn a_left_join_keeps_the_notes_of_writers_without_a_name() {
     let Some((app, _, _)) = setup("left_join") else {
         return;
     };
-    assert_eq!(send(&app, by(Some("ann"), "PUT", "/me", "Ann")).0, StatusCode::CREATED);
+    assert_eq!(
+        send(&app, by(Some("ann"), "PUT", "/me", "Ann")).0,
+        StatusCode::CREATED
+    );
     let publish = |user: &str, text: &str| {
         let id = add(&app, user, text);
         let req = by(Some(user), "POST", &format!("/notes/{id}/publish"), "");

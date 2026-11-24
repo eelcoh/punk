@@ -28,6 +28,26 @@ Without settings the server uses the database `@app@` on this computer, makes th
 you, and connects as `@crate@_app`. Elsewhere, set `DATABASE_OWNER_URL` (the role that owns the
 tables), `DATABASE_URL` (the app's role, not a superuser) and `PORT`.
 
+## Settings
+
+The app's own settings (a base URL, an API key) are environment variables. `@App@.punk` says
+which ones it needs and what type each one is, with its `settings` decoder:
+
+```
+type alias Settings =
+    { apiKey : Secret
+    }
+
+settings : Config.Decoder Settings
+settings =
+    Config.map (fn apiKey -> { apiKey = apiKey }) (Config.secret "API_KEY")
+```
+
+and `server/src/lib.rs` lists their names in `SETTINGS`: the server lets the app read those
+and no other environment variables. A setting that is missing or doesn't fit stops the server
+when it starts, with a message for each one. A `Secret` can't be turned into text, so it can't
+end up in a log or a response.
+
 ## In a container
 
 `Dockerfile` builds the server as one static program on an image with nothing else in it

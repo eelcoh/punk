@@ -1,6 +1,7 @@
-app [handle!] { Platform: platform "server", Json: "json" }
+app [Settings, main] { Platform: platform "server", Json: "json" }
 
 import Platform.Http exposing [Request, Response]
+import Platform.Config
 import Platform.Db
 import Platform.Random
 import Platform.Log
@@ -17,6 +18,16 @@ migration; ../notes is the app after it.
 - `GET /notes/<id>`: one note, 404 if there is none.
 - `DELETE /notes/<id>`: removes it, 204.
 -}
+
+-- ANCHOR: main
+main =
+    { settings = Config.succeed {}, handle! = handle! }
+
+-- The app needs no settings.
+type alias Settings =
+    {}
+
+-- ANCHOR_END: main
 
 -- ANCHOR: table
 type alias Note =
@@ -116,8 +127,8 @@ expect toRoute (Http.request Get "/notes/n12/comments") == Nothing
 -- ANCHOR_END: route-type
 
 -- ANCHOR: routes
-handle! : Request => Response
-handle! = fn req ->
+handle! : Settings -> Request => Response
+handle! = fn _, req ->
     case route! req of
         Ok response -> response
         Err (PgErr problem) ->

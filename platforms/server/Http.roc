@@ -56,6 +56,18 @@ Http := [].{
         List.map(without_last, percent_decode)
     }
 
+    ## The value of a header of the request, in punk
+    ## `Http.header "authorization" req`: `Nothing` when it has none. The
+    ## name may be in any case. With the header more than once, the first.
+    header : Request, Str -> [Just(Str), Nothing]
+    header = |req, name| {
+        wanted = Str.with_ascii_lowercased(name)
+        match List.find_first(req.headers, |(n, _)| Str.with_ascii_lowercased(n) == wanted) {
+            Ok((_, value)) => Just(value)
+            Err(_) => Nothing
+        }
+    }
+
     ## A request with this method and path, and no headers or body: for an
     ## `expect` on a function that routes requests. In punk
     ## `Http.request Get "/notes/n12"`. A query after `?` goes into `query`.

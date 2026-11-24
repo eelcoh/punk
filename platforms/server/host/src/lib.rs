@@ -117,6 +117,10 @@ impl RocDone {
 }
 
 unsafe extern "C" {
+    /// The app's settings decoder on the settings: `check_settings_for_host!` of
+    /// `platforms/server/main.roc`. Empty when they fit, else one line per problem.
+    fn roc_check_settings() -> RocStr;
+
     /// The app: `handle_for_host!` of `platforms/server/main.roc`.
     fn roc_handle(
         method: RocStr,
@@ -134,25 +138,35 @@ pub struct App {
     kv: Box<dyn Kv>,
     database: Box<dyn Database>,
     documents: Box<dyn Documents>,
-    config: String,
+    settings: Settings,
 }
 
 impl App {
-    /// The app, with everything it may use. `config` is what the app reads with `Config.text!`,
-    /// JSON by convention.
+    /// The app, with everything it may use. `settings` are what its `Config` decoder reads; they
+    /// are checked here, so a server whose settings don't fit the app doesn't start.
     pub fn new(
         clock: impl Clock,
         random: impl Random,
         kv: impl Kv,
-        config: impl Into<String>,
-    ) -> Self {
-        Self {
+        settings: Settings,
+    ) -> Result<Self, BadSettings> {
+        let app = Self {
             clock: Box::new(clock),
             random: Box::new(random),
             kv: Box::new(kv),
             database: Box::new(database::NoDatabase),
             documents: Box::new(documents::NoDocuments),
-            config: config.into(),
+            settings,
+        };
+        // SAFETY: the app's settings check takes nothing and returns a `Str`, which we own; the
+        // one hosted function it calls finds the app set by `with_app`.
+        let problems = with_app(&app, || unsafe { roc_check_settings() });
+        if problems.as_str().is_empty() {
+            Ok(app)
+        } else {
+            Err(BadSettings {
+                problems: problems.as_str().lines().map(str::to_owned).collect(),
+            })
         }
     }
 
@@ -245,6 +259,74 @@ fn internal_error() -> Response {
     );
     response
 }
+
+// --- Settings ------------------------------------------------------------------------------------
+
+/// The settings the wiring gives the app: names with their text, which the app's `Config`
+/// decoder reads and types. The wiring picks them, so the app sees only these: `from_env` takes
+/// the environment variables it names, not the whole environment.
+///
+/// Its `Debug` shows the names only: a setting may be a secret.
+#[derive(Clone, Default)]
+pub struct Settings {
+    pairs: Vec<(String, String)>,
+}
+
+impl Settings {
+    /// No settings.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// These settings, and `name` with this value (replacing one of that name).
+    pub fn set(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        let name = name.into();
+        self.pairs.retain(|(n, _)| *n != name);
+        self.pairs.push((name, value.into()));
+        self
+    }
+
+    /// The environment variables with these names that are set (and valid UTF-8). One that
+    /// isn't set is left out: the app's decoder says whether it needs it.
+    pub fn from_env(names: &[&str]) -> Self {
+        names
+            .iter()
+            .fold(Self::new(), |settings, name| match std::env::var(name) {
+                Ok(value) => settings.set(*name, value),
+                Err(_) => settings,
+            })
+    }
+
+    /// The names of the settings, in order.
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.pairs.iter().map(|(name, _)| name.as_str())
+    }
+}
+
+impl std::fmt::Debug for Settings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.names()).finish()
+    }
+}
+
+/// Settings that don't fit the app: one problem per setting that is missing or wrong. The
+/// messages never hold the value of a `Config.secret`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BadSettings {
+    pub problems: Vec<String>,
+}
+
+impl std::fmt::Display for BadSettings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "the settings don't fit the app: {}",
+            self.problems.join("; ")
+        )
+    }
+}
+
+impl std::error::Error for BadSettings {}
 
 // --- The app that's running on this thread ------------------------------------------------------
 
@@ -371,8 +453,19 @@ pub extern "C" fn roc_random_u64() -> u64 {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn roc_config_text() -> RocStr {
-    app(|app| RocStr::new(&app.config))
+pub extern "C" fn roc_config_settings() -> RocList<RocPair> {
+    app(|app| {
+        RocList::from_vec(
+            app.settings
+                .pairs
+                .iter()
+                .map(|(name, value)| RocPair {
+                    first: RocStr::new(name),
+                    second: RocStr::new(value),
+                })
+                .collect(),
+        )
+    })
 }
 
 #[unsafe(no_mangle)]

@@ -1,6 +1,7 @@
-app [handle!] { Platform: platform "server" }
+app [Settings, main] { Platform: platform "server" }
 
 import Platform.Http exposing [Request, Response]
+import Platform.Config
 import Platform.Db
 import Platform.Random
 import Platform.Log
@@ -28,6 +29,13 @@ The user comes from the header `x-user`, which a proxy in front of the app
 sets once it has signed the user in. Without it the user is nobody, who only
 reads the public notes and writes none.
 -}
+
+main =
+    { settings = Config.succeed {}, handle! = handle! }
+
+-- The app needs no settings.
+type alias Settings =
+    {}
 
 type alias Note =
     { id : Str
@@ -143,8 +151,8 @@ remove = fn id ->
         |> Db.filter (fn note -> note.id == id)
         |> Db.delete
 
-handle! : Request => Response
-handle! = fn req ->
+handle! : Settings -> Request => Response
+handle! = fn _, req ->
     user = { id = header "x-user" req }
     case route! user req of
         Ok response -> response

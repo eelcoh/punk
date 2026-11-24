@@ -10,7 +10,9 @@
 #
 # The database: DATABASE_URL and DATABASE_OWNER_URL, as for `cargo run`.
 # Without them it is Postgres on this computer, which the VM reaches at
-# 10.0.2.2. The server is on http://localhost:$PORT (8080). Ctrl-C stops it.
+# 10.0.2.2. The app's own settings (SETTINGS in src/lib.rs) go to the VM as
+# they are set here. The server is on http://localhost:$PORT (8080). Ctrl-C
+# stops it.
 set -eu
 cd "$(dirname "$0")"
 
@@ -20,6 +22,14 @@ loader_version=v0.5.6 # the loader for kernel 0.13.2 (v0.5.7 isn't)
 port=${PORT:-8080}
 url=${DATABASE_URL:-postgres://@crate@_app@10.0.2.2/@app@?sslmode=disable}
 owner_url=${DATABASE_OWNER_URL:-postgres://$(id -un)@10.0.2.2/@app@?sslmode=disable}
+
+# The app's settings that are set here, as `env=NAME=value` for the kernel's
+# command line (so a value can't have spaces).
+settings=""
+names=$(tr '\n' ' ' < src/lib.rs | sed -n 's/.*pub const SETTINGS: &\[&str\] = &\[\([^]]*\)\];.*/\1/p' | tr -d '",')
+for name in $names; do
+    if value=$(printenv "$name"); then settings="$settings env=$name=$value"; fi
+done
 
 command -v qemu-system-x86_64 > /dev/null || {
     echo "unikernel.sh: QEMU is not installed (on a Mac: brew install qemu)" >&2
@@ -57,6 +67,6 @@ exec qemu-system-x86_64 $accel \
     -smp 1 -m 256M -display none -serial stdio \
     -device isa-debug-exit,iobase=0xf4,iosize=0x04 \
     -kernel "$loader" -initrd "target/$target/release/@app@" \
-    -append "env=DATABASE_URL=$url env=DATABASE_OWNER_URL=$owner_url env=PORT=$port" \
+    -append "env=DATABASE_URL=$url env=DATABASE_OWNER_URL=$owner_url env=PORT=$port$settings" \
     -netdev "user,id=net0,hostfwd=tcp::$port-:$port" \
     -device virtio-net-pci,netdev=net0,disable-legacy=on

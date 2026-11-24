@@ -19,7 +19,7 @@ psql -q "$PUNK_TEST_POSTGRES" -c "DO \$\$ BEGIN CREATE ROLE notes_hermit_app LOG
     EXCEPTION WHEN duplicate_object THEN NULL; END \$\$"
 
 cd examples/tutorial/notes/server
-PUNK="$punk" PORT=$port \
+PUNK="$punk" PORT=$port API_KEY=hermit-key \
     DATABASE_URL="postgres://notes_hermit_app:app-secret@10.0.2.2/notes_hermit?sslmode=disable" \
     DATABASE_OWNER_URL="${vm_url%/*}/notes_hermit?sslmode=disable" \
     sh unikernel.sh > "$log" 2>&1 &
@@ -40,14 +40,16 @@ check() { # name, expected, actual
 }
 status() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
 
+key="Authorization: Bearer hermit-key"
 check "the tables are made" 200 "$(status "$base/notes")"
-created=$(curl -s -X POST "$base/notes" -d '{"title": "Milk", "body": "2 litres"}')
+check "writing needs the key" 401 "$(status -X POST "$base/notes" -d '{"title": "Milk", "body": "2 litres"}')"
+created=$(curl -s -X POST -H "$key" "$base/notes" -d '{"title": "Milk", "body": "2 litres"}')
 id=$(printf '%s' "$created" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
 check "a new note has an id" yes "$([ -n "$id" ] && echo yes || echo no)"
 check "it can be read back" 200 "$(status "$base/notes/$id")"
 check "it is in the list" 1 "$(curl -s "$base/notes" | grep -o "\"$id\"" | wc -l | tr -d ' ')"
-check "a bad body" 400 "$(status -X POST "$base/notes" -d '{"title": "Milk"}')"
-check "it can be deleted" 204 "$(status -X DELETE "$base/notes/$id")"
+check "a bad body" 400 "$(status -X POST -H "$key" "$base/notes" -d '{"title": "Milk"}')"
+check "it can be deleted" 204 "$(status -X DELETE -H "$key" "$base/notes/$id")"
 check "then it is gone" 404 "$(status "$base/notes/$id")"
 
 if [ $failures -gt 0 ]; then

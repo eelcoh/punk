@@ -1,13 +1,19 @@
 platform ""
     requires {
-        handle! : Http.Request => Http.Response
+        [Settings : settings] for main : {
+            settings : Config.Decoder(settings),
+            handle! : settings, Http.Request => Http.Response,
+        }
     }
-    exposes [Http, Clock, Random, Kv, Config, Log, Postgres, Sql, Row, Db, Mongo, Bson, Doc, Filter, Update]
+    exposes [Http, Clock, Random, Kv, Config, Secret, Log, Postgres, Sql, Row, Db, Mongo, Bson, Doc, Filter, Update]
     packages {}
-    provides { "roc_handle": handle_for_host! }
+    provides {
+        "roc_check_settings": check_settings_for_host!,
+        "roc_handle": handle_for_host!,
+    }
     hosted {
         "roc_clock_now": Clock.now!,
-        "roc_config_text": Config.text!,
+        "roc_config_settings": Config.settings_host!,
         "roc_kv_delete": Kv.delete!,
         "roc_kv_get": Kv.get_host!,
         "roc_kv_put": Kv.put!,
@@ -46,10 +52,27 @@ import Update
 import Postgres
 import Random
 import Row
+import Secret
 import Sql
 
+## Called by the host once, when the server starts: the app's settings
+## decoder on the settings the wiring gives. Empty when they fit; otherwise
+## one line for each setting that is missing or wrong, and the host doesn't
+## start.
+check_settings_for_host! : {} => Str
+check_settings_for_host! = |{}|
+    match Config.decode(Config.settings_host!(), main.settings) {
+        Ok(_) => ""
+        Err(problems) => problems
+    }
+
 ## Called by the host for each request, with the request in pieces that are
-## easy to hand over through the C ABI.
+## easy to hand over through the C ABI. The settings are decoded again, for
+## this request only: a value of the app's type is never shared between the
+## host's threads. They fit, since the host checked them at the start.
 handle_for_host! : Str, Str, Str, List((Str, Str)), List(U8) => Http.Response
 handle_for_host! = |method, path, query, headers, body|
-    handle!({ method, path, query, headers, body })
+    match Config.decode(Config.settings_host!(), main.settings) {
+        Ok(settings) => (main.handle!)(settings, { method, path, query, headers, body })
+        Err(_) => { status: 500, headers: [], body: Str.to_utf8("bad settings\n") }
+    }

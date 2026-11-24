@@ -25,6 +25,7 @@ const elm = @import("elm.zig");
 const numbers = @import("numbers.zig");
 const rules = @import("rules.zig");
 const query = @import("query.zig");
+const rawsql = @import("rawsql.zig");
 const migrate = @import("migrate.zig");
 const Allocator = std.mem.Allocator;
 
@@ -2927,7 +2928,10 @@ pub const Emitter = struct {
             var sql = args[0];
             while (sql.* == .paren) sql = sql.paren;
             if (sql.* == .string) {
-                if (std.mem.find(u8, sql.string, "${") == null) return;
+                if (std.mem.find(u8, sql.string, "${") == null) {
+                    const module = name[0 .. std.mem.findScalarLast(u8, name, '.') orelse 0];
+                    return rawsql.check(e, if (module.len > 0) module else "Sql", sql.string, if (args.len > 1) args[1] else null);
+                }
                 return e.errAtRule(sql.string, .sql_not_literal, try std.fmt.allocPrint(e.a, "the SQL of '{s}' can't contain '${{...}}': a value in the SQL text could change what the query does. Write '$1', '$2', ... in the SQL and pass the values in the list: {s} \"... WHERE id = $1\" [Sql.text id]", .{ name, name }));
             }
         }

@@ -326,6 +326,7 @@ Positions are 1-based and in the `.punk` file. `code` is stable:
 | `P102` | `dbg` outside an `expect` |
 | `P201` | an exposed value of a module has no type annotation |
 | `P301` | the SQL of `Sql.query` is not a string literal: pass values as parameters (`$1`) |
+| `P303` | the SQL of `Sql.query` names a table the module doesn't declare or a column it doesn't have, gives a parameter of another type than its column (`hits > $1` wants `Sql.int`), or the list doesn't have `$1` up to the last parameter |
 | `P302` | a Mongo collection or field name (`Mongo.collection`, `Filter.*`, `Update.*`, `Mongo.sortBy`) is not a string literal, or is empty or starts with `$` |
 | `P401` | a `table` declaration: its row type is not a record of storable columns, its key is not a column, or a policy line is missing |
 | `P402` | a query that can't run in the database: not a pipeline from a table to `Db.all`/`first`/`update`/`delete`, or a function the database can't run |
@@ -661,24 +662,29 @@ SQL yourself with `Sql.query`:
 The database the wiring gives the app. A query is SQL written in the program
 plus its parameters (`$1`, `$2`, ...); a row decoder reads the rows, as
 `json.Decode` reads JSON. The SQL of `Sql.query` has to be a string literal
-without `${...}` (rule P301): values always go in as parameters.
+without `${...}` (rule P301): values always go in as parameters. The
+compiler reads the SQL against the module's `table` declarations (P303): the
+tables and columns must exist, a parameter has the type of the column it
+meets (`created > $1` is `Sql.posix`, `LIMIT $1` is `Sql.int`), and the list
+has exactly `$1` up to the last one.
 
 ```
 import Platform.Postgres
 import Platform.Sql
 import Platform.Row
 
-linkRow : Row.Decoder Link
-linkRow =
-    Row.map2 (fn created, url -> { created, url })
-        (Row.field "created" Row.int)
+-- with `table links : Link` in the module; Link has url : Str and hits : Int
+visitsRow : Row.Decoder Visits
+visitsRow =
+    Row.map2 (fn url, hits -> { url, hits })
         (Row.field "url" Row.text)
+        (Row.field "hits" Row.int)
 
-findLink : Str -> Sql.Query
-findLink = fn id ->
-    Sql.query "SELECT created, url FROM links WHERE id = $1" [Sql.text id]
+busiest : Int -> Sql.Query
+busiest = fn n ->
+    Sql.query "SELECT url, hits FROM links WHERE hits > 0 ORDER BY hits DESC LIMIT $1" [Sql.int n]
 
--- in an effect: case try Postgres.row! linkRow (findLink id) of ...
+-- in an effect: visits = try Postgres.rows! visitsRow (busiest 10)
 ```
 
 ```

@@ -225,21 +225,34 @@ import Platform.Postgres
 import Platform.Sql
 import Platform.Row
 
-type alias Link = { created : Int, url : Str }
+type alias Link =
+    { id : Str
+    , url : Str
+    , hits : Int
+    }
 
-linkRow : Row.Decoder Link
-linkRow =
-    Row.map2 (fn created, url -> { created, url })
-        (Row.field "created" Row.int)
+table links : Link
+    key id
+    read everyone
+    insert everyone
+    update everyone
+    delete nobody
+
+type alias Visits = { url : Str, hits : Int }
+
+visitsRow : Row.Decoder Visits
+visitsRow =
+    Row.map2 (fn url, hits -> { url, hits })
         (Row.field "url" Row.text)
+        (Row.field "hits" Row.int)
 
-findLink : Str -> Sql.Query
-findLink = fn id ->
-    Sql.query "SELECT created, url FROM links WHERE id = $1" [Sql.text id]
+busiest : Int -> Sql.Query
+busiest = fn n ->
+    Sql.query "SELECT url, hits FROM links WHERE hits > 0 ORDER BY hits DESC LIMIT $1" [Sql.int n]
 
-resolve! : Str => Result (Maybe Link) _
-resolve! = fn id ->
-    Postgres.row! linkRow (findLink id)
+top! : Int => Result (List Visits) _
+top! = fn n ->
+    Postgres.rows! visitsRow (busiest n)
 ```
 
 - **No SQL from text.** A `Sql.Query` is SQL written in the program plus the
@@ -247,6 +260,17 @@ resolve! = fn id ->
   one, and punk only accepts a string literal without `${...}` as its SQL
   (rule P301): `Sql.query ("SELECT * FROM " ++ table) []` doesn't compile. A
   value from a request can only ever be a parameter.
+- **Checked against the tables (P303).** The compiler reads the SQL against
+  the module's `table` declarations, without a database: every table it
+  names is declared (`table links : Link`), every column is one of theirs
+  (`l.url`, or a bare `url` that only one table has), each parameter has the
+  `Sql` type of the column it is compared with or goes into
+  (`created > $1` wants `Sql.posix`, `INSERT INTO links (id, hits) VALUES
+  ($1, $2)` wants `Sql.text` and `Sql.int`, `LIMIT $1` an `Sql.int`), a
+  `Sql.null` only goes into a `Maybe` column, and the list gives exactly
+  `$1` up to the last parameter. Columns of a `WITH` or a subquery, and a
+  parameter with a cast (`$1::text`), are left to Postgres, which checks
+  them when it prepares the query.
 - **Typed both ways.** The host prepares the SQL and checks each parameter
   against the type the statement wants (`Sql.int` for an `integer`, an `Int`
   that doesn't fit an `int4` is an error, not a wrapped number). A column is
@@ -568,8 +592,7 @@ shortener checks it too).
 ## Not there yet
 
 - The query language: grouping a join, filtering groups (`HAVING`), tables shared
-  between modules, removing or renaming a whole table in a migration, own types as columns (`type LinkId =
-  LinkId Str`), and checking `Sql.query`'s SQL against the tables.
+  between modules, removing or renaming a whole table in a migration.
 - On hermit: `sslrootcert` (a unikernel has no files) and a test of host
   names (DNS); see `hermit/README.md`. Certificates for the app itself
   (`sslcert`, `tlsCertificateKeyFile`).

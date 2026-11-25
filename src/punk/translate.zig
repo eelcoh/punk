@@ -933,6 +933,23 @@ pub const Parser = struct {
                     const table = p.advance().text;
                     return .{ .migrate = .{ .table = table, .func = try p.parseExpr() } };
                 }
+                // `migrate links from urls`, maybe with a function below:
+                // the table urls is now called links.
+                if (std.mem.eql(u8, t.text, "migrate") and t.col == 1 and p.peekAt(1).tag == .lower and std.mem.eql(u8, p.peekAt(2).text, "from") and p.peekAt(3).tag == .lower and !p.peekAt(3).first_on_line) {
+                    _ = p.advance();
+                    const table = p.advance().text;
+                    _ = p.advance();
+                    const from = p.advance().text;
+                    const func: ?*Expr = if (p.peekAt(0).first_on_line and p.peekAt(0).col > 1 and p.peekAt(0).tag != .eof) try p.parseExpr() else null;
+                    return .{ .migrate = .{ .table = table, .func = func, .from = from } };
+                }
+                // `remove table urls`: the table and its rows go.
+                if (std.mem.eql(u8, t.text, "remove") and t.col == 1 and std.mem.eql(u8, p.peekAt(1).text, "table") and p.peekAt(2).tag == .lower and !p.peekAt(2).first_on_line) {
+                    _ = p.advance();
+                    _ = p.advance();
+                    const table = p.advance().text;
+                    return .{ .migrate = .{ .table = table, .func = null, .remove = true } };
+                }
                 if (p.peekAt(1).tag == .colon) {
                     _ = p.advance();
                     _ = p.advance();
@@ -2333,7 +2350,7 @@ pub const Emitter = struct {
                 },
                 // A migration is in schema.sql once it has been done.
                 .migrate => |m| {
-                    try e.w("# migrate ");
+                    try e.w(if (m.remove) "# remove table " else "# migrate ");
                     try e.w(m.table);
                 },
             }

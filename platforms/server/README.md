@@ -228,6 +228,19 @@ findLink = fn id ->
   transaction of its own, recorded in the table `punk_schema`; a version that
   changed after it was applied is an error. `examples/notes` has two
   versions.
+
+  A table with a new name says where it came from, with a function below it
+  when its columns change too; a table that goes, with its rows, says so:
+
+  ```
+  migrate links from urls
+  remove table visits
+  ```
+
+  `migrate links from urls` is `ALTER TABLE urls RENAME TO links` (its
+  policies get the new name). A table that is gone from the program without
+  either line doesn't compile, so a rename never drops the rows by accident.
+  Both lines go once the version is in `schema.sql`.
 - **Transactions.** `Db.transaction! (fn _ -> ...)` runs a function of
   queries in one transaction, on one connection: `Ok` commits it, `Err`
   rolls it back. `Db.transactionAs! user (fn _ -> ...)` gives it the fields
@@ -613,8 +626,7 @@ shortener checks it too).
 
 ## Not there yet
 
-- The query language: grouping a join, filtering groups (`HAVING`), removing
-  or renaming a whole table in a migration.
+- The query language: grouping a join, filtering groups (`HAVING`).
 - On hermit: `sslrootcert` (a unikernel has no files) and a test of host
   names (DNS); see `hermit/README.md`. Certificates for the app itself
   (`sslcert`, `tlsCertificateKeyFile`).

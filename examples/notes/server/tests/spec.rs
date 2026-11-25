@@ -253,6 +253,34 @@ fn writers_are_grouped_with_a_count() {
 }
 
 #[test]
+fn busy_writers_group_a_join_and_filter_the_groups() {
+    let Some((app, _, _)) = setup("having") else {
+        return;
+    };
+    for (user, name) in [("ann", "Ann"), ("bob", "Bob"), ("cee", "Ann")] {
+        let req = by(Some(user), "PUT", "/me", name);
+        assert_eq!(send(&app, req).0, StatusCode::CREATED);
+    }
+    let publish = |user: &str, text: &str| {
+        let id = add(&app, user, text);
+        let req = by(Some(user), "POST", &format!("/notes/{id}/publish"), "");
+        assert_eq!(send(&app, req).0, StatusCode::OK);
+    };
+    // Two writers named Ann, one note each: one group of two.
+    publish("ann", "a1");
+    publish("cee", "c1");
+    // Bob has one public note and one private one: not busy.
+    publish("bob", "b1");
+    add(&app, "bob", "b2");
+    // Dan has two, but no name: the join leaves him out.
+    publish("dan", "d1");
+    publish("dan", "d2");
+    let (status, body) = send(&app, by(None, "GET", "/writers/busy", ""));
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, "Ann 2\n");
+}
+
+#[test]
 fn one_pinned_note_per_user_in_a_transaction() {
     let Some((app, _, _)) = setup("pin_one") else {
         return;

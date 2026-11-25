@@ -2519,6 +2519,27 @@ test "queries: groupBy with count, sum, min, max and avg" {
     , out);
 }
 
+test "queries: groupBy on a join, and filters of groups (HAVING)" {
+    const out = try queryOut(join_head ++
+        \\q = fn least ->
+        \\    links
+        \\        |> Db.join users (fn link, user -> link.owner == user.id)
+        \\        |> Db.filter (fn _, user -> user.active)
+        \\        |> Db.groupBy (fn _, user -> user.name)
+        \\        |> Db.filter (fn _, rows -> Db.count rows >= least)
+        \\        |> Db.filter (fn name, rows -> name /= "root" || Db.max (fn link, _ -> link.url) rows == "x")
+        \\        |> Db.sortBy (fn name, _ -> name)
+        \\        |> Db.map (fn name, rows -> { name, n = Db.count rows, last = Db.max (fn link, _ -> link.url) rows })
+        \\        |> Db.all
+        \\
+    );
+    defer std.testing.allocator.free(out);
+    try std.testing.expectEqualStrings(
+        \\q = |least| Db.all_rows([Db.param_int(least), Db.param_text("root"), Db.param_text("x")], "SELECT t1.name AS name, COUNT(*) AS n, MAX(t0.url) AS last FROM links t0 JOIN users t1 ON t0.owner = t1.id WHERE t1.active GROUP BY t1.name HAVING COUNT(*) >= $1 AND (t1.name <> $2 OR MAX(t0.url) = $3) ORDER BY t1.name ASC", Db.field(Db.read_text, "name", |punk_c1| Db.field(Db.read_int, "n", |punk_c2| Db.field(Db.read_text, "last", |punk_c3| Db.done({ name: punk_c1, n: punk_c2, last: punk_c3 })))))
+        \\
+    , out);
+}
+
 test "rules: leftJoin and groupBy (P402, P403)" {
     const head = join_head;
     // The row of a leftJoin is a Maybe.
@@ -2527,9 +2548,13 @@ test "rules: leftJoin and groupBy (P402, P403)" {
     try checkRule(head ++ "q = links |> Db.leftJoin links (fn l, m -> l.owner == m.id) |> Db.map (fn l, m -> Maybe.andThen .url m) |> Db.all\n", 31, 98, .query_type);
     // An aggregate outside a groupBy.
     try checkRule(head ++ "q = links |> Db.map (fn l -> Db.count l) |> Db.all\n", 31, 30, .not_in_database);
-    // groupBy needs a map, and works on one table.
+    // groupBy needs a map.
     try checkRule(head ++ "q = links |> Db.groupBy .owner |> Db.all\n", 31, 35, .not_in_database);
-    try checkRule(head ++ "q = links |> Db.join users (fn l, u -> l.owner == u.id) |> Db.groupBy (fn l, _ -> l.owner) |> Db.map (fn o, rows -> o) |> Db.all\n", 31, 60, .not_in_database);
+    // A filter of groups gives a Bool, of the key and the rows.
+    try checkRule(head ++ "q = links |> Db.groupBy .owner |> Db.filter (fn o, rows -> Db.count rows) |> Db.map (fn o, rows -> o) |> Db.all\n", 31, 49, .query_type);
+    try checkRule(head ++ "q = links |> Db.groupBy .owner |> Db.filter (fn l -> l.url == \"x\") |> Db.map (fn o, rows -> o) |> Db.all\n", 31, 49, .not_in_database);
+    // On a join, the functions of the aggregates take a row of each table.
+    try checkRule(head ++ "q = links |> Db.join users (fn l, u -> l.owner == u.id) |> Db.groupBy (fn _, u -> u.name) |> Db.map (fn n, rows -> { n, s = Db.max .url rows }) |> Db.all\n", 31, 125, .not_in_database);
     // Sum adds numbers; the rows go in an aggregate.
     try checkRule(head ++ "q = links |> Db.groupBy .owner |> Db.map (fn o, rows -> { o, s = Db.sum .url rows }) |> Db.all\n", 31, 74, .query_type);
     try checkRule(head ++ "q = links |> Db.groupBy .owner |> Db.map (fn o, rows -> rows) |> Db.all\n", 31, 57, .not_in_database);

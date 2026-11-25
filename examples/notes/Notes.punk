@@ -25,6 +25,8 @@ as the user of the request (`Db.runAs!`).
   (then `?`), one per line: `name: body`.
 - `GET /writers`: per user with public notes, how many and the first by text,
   one per line: `owner count first`.
+- `GET /writers/busy`: the names with at least two public notes, by name, one
+  per line: `name count`.
 
 The user comes from the header `x-user`, which a proxy in front of the app
 sets once it has signed the user in. Without it the user is nobody, who only
@@ -117,6 +119,19 @@ writers =
             )
         |> Db.all
 
+-- The names with at least two public notes: a join grouped by the name of
+-- the writer, and a filter of the groups (HAVING).
+busyWriters : Db.Query (List { name : Str, count : Int })
+busyWriters =
+    notes
+        |> Db.join people (fn note, person -> note.owner == person.id)
+        |> Db.filter (fn note, _ -> note.public)
+        |> Db.groupBy (fn _, person -> person.name)
+        |> Db.filter (fn _, rows -> Db.count rows >= 2)
+        |> Db.sortBy (fn name, _ -> name)
+        |> Db.map (fn name, rows -> { name, count = Db.count rows })
+        |> Db.all
+
 remove : Str -> Db.Query Int
 remove = fn id ->
     notes
@@ -153,6 +168,7 @@ route! = fn user, req ->
         Just PublicNotes -> listPublic! user
         Just AllPublicNotes -> listAllPublic! user
         Just Writers -> listWriters! user
+        Just BusyWriters -> listBusyWriters! user
         Nothing -> Ok (text 404 "not found\n")
 
 -- What a request can ask for, one tag per route.
@@ -166,6 +182,7 @@ type Route
     | PublicNotes
     | AllPublicNotes
     | Writers
+    | BusyWriters
 
 -- The route of a request, `Nothing` when there is no such route.
 toRoute : Request -> Maybe Route
@@ -180,6 +197,7 @@ toRoute = fn req ->
         (Get, ["public"]) -> Just PublicNotes
         (Get, ["public", "all"]) -> Just AllPublicNotes
         (Get, ["writers"]) -> Just Writers
+        (Get, ["writers", "busy"]) -> Just BusyWriters
         _ -> Nothing
 
 expect toRoute (Http.request Post "/notes/n1/pin") == Just (Pin "n1")
@@ -292,5 +310,14 @@ listWriters! = fn user ->
     lines =
         found
             |> List.map (fn w -> "${userIdText w.owner} ${String.fromInt w.count} ${w.first}\n")
+            |> Str.joinWith ""
+    Ok (text 200 lines)
+
+listBusyWriters! : User => Result Response _
+listBusyWriters! = fn user ->
+    found = try Db.runAs! user busyWriters
+    lines =
+        found
+            |> List.map (fn w -> "${w.name} ${String.fromInt w.count}\n")
             |> Str.joinWith ""
     Ok (text 200 lines)

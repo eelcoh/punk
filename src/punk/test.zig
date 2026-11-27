@@ -1652,6 +1652,48 @@ test "fmt: long lines are split, elm-format style" {
         \\        Noop -> model
         \\
     );
+    try checkFormat(
+        \\json : U16 -> Value -> Response
+        \\json = fn status, value ->
+        \\    { status,
+        \\      headers = [("content-type", "application/json")]
+        \\    , body = Str.toUtf8 (E.encode 0 value)
+        \\    }
+        \\
+        \\items : List Int
+        \\items =
+        \\    [1, -- first
+        \\     2,
+        \\     3
+        \\    ]
+        \\
+        \\updated =
+        \\    { model
+        \\        | a = 1,
+        \\          b = 2
+        \\    }
+    ,
+        \\json : U16 -> Value -> Response
+        \\json = fn status, value ->
+        \\    { status
+        \\    , headers = [("content-type", "application/json")]
+        \\    , body = Str.toUtf8 (E.encode 0 value)
+        \\    }
+        \\
+        \\items : List Int
+        \\items =
+        \\    [ 1 -- first
+        \\    , 2
+        \\    , 3
+        \\    ]
+        \\
+        \\updated =
+        \\    { model
+        \\        | a = 1
+        \\        , b = 2
+        \\    }
+        \\
+    );
 }
 
 test "fmt: a syntax error leaves the file alone" {
@@ -2595,6 +2637,53 @@ test "packages: capitalized names in the app header and the imports" {
         \\main! = || Stdout.line!("hi")
         \\
     );
+    try checkWith(
+        \\module Activity exposing (decode)
+        \\
+        \\import Platform.Time exposing (Posix)
+        \\import Json.Decode as D
+        \\
+        \\decode : D.Decoder Str
+        \\decode = D.string
+    ,
+        \\import pf.Time exposing [Posix]
+        \\import json.Decode as D
+        \\
+        \\Activity := [].{
+        \\    decode : D.Decoder(Str)
+        \\    decode = D.string
+        \\}
+        \\
+    );
+    // A module importing a built-in package gets its interface through `reader.platform`,
+    // so partial application of its functions works too.
+    const pkg_files = Files{ .entries = &.{
+        .{ "app/../pkg/json/Decode.punk", "module Decode exposing (field, string)\n\nfield : Str -> Decoder a -> Decoder a\nfield = fn name, dec -> dec\n\nstring : Decoder Str\nstring = 0\n" },
+    } };
+    const findJson = struct {
+        fn find(_: ?*anyopaque, _: std.mem.Allocator, _: []const u8, kind: mod.NameKind, name: []const u8) ?[]const u8 {
+            return if (kind == .package and std.mem.eql(u8, name, "json")) "../pkg/json/main.roc" else null;
+        }
+    }.find;
+    const reader = mod.Reader{ .ctx = @ptrCast(@constCast(&pkg_files)), .read = Files.read, .platform = findJson };
+    const out = try mod.toRocWith(std.testing.allocator, "app/Activity.punk",
+        \\module Activity exposing (titleField)
+        \\
+        \\import Json.Decode as D
+        \\
+        \\titleField : D.Decoder a -> D.Decoder a
+        \\titleField = D.field "title"
+    , reader);
+    defer std.testing.allocator.free(out);
+    try std.testing.expectEqualStrings(
+        \\import json.Decode as D
+        \\
+        \\Activity := [].{
+        \\    title_field : D.Decoder(a) -> D.Decoder(a)
+        \\    title_field = |punk_a1| D.field("title", punk_a1)
+        \\}
+        \\
+    , out);
 }
 
 test "modules: a constant of a Roc module that is a function without arguments" {

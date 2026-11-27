@@ -116,10 +116,14 @@ pub fn translateMapped(arena: Allocator, src: []const u8, diag: *Diagnostic, res
 /// "...", Json: "..." }` and `import Platform.Http`. Roc wants a lowercase
 /// name, so the app header and the imports get Roc's: `Platform` is `pf`,
 /// any other `Name` is `name` (snake case). Lowercase names stay as they are.
+/// A module file has no `app` header, so the built-in package names
+/// (`Platform`, `Json`) are rewritten in its imports as well.
 fn renamePackages(a: Allocator, items: []Item) Error!void {
     var names: std.ArrayList([]const u8) = .empty;
+    var has_app = false;
     for (items) |*item| {
         if (item.kind != .raw or !std.mem.startsWith(u8, item.kind.raw, "app")) continue;
+        has_app = true;
         const raw = item.kind.raw;
         const open = std.mem.findScalar(u8, raw, '{') orelse continue;
         var out: std.ArrayList(u8) = .empty;
@@ -145,6 +149,9 @@ fn renamePackages(a: Allocator, items: []Item) Error!void {
             i += 1;
         }
         item.kind = .{ .raw = out.items };
+    }
+    if (!has_app) {
+        try names.appendSlice(a, &.{ "Platform", "Json" });
     }
     if (names.items.len == 0) return;
     for (items) |*item| {

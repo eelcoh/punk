@@ -31,6 +31,8 @@ loop is clean.
 | `P101` / `P102` | `crash` / `dbg` outside an `expect` | return a `Result` or `Maybe` with your own error tag |
 | `P201` | an exposed function of a module has no annotation | add `name : Type` above it |
 | `P301` | SQL built with `${}` or `++` | a literal with `$1`, values as `Sql.text x` parameters |
+| `P302` | Mongo collection or field name is not a literal, or starts with `$` | pass a plain string literal (no `$` operators) |
+| `P303` | `Sql.query` names an unknown table/column or wrong parameter type | match the module's `table` declarations and column types |
 | `P401` | a `table` misses a policy line or its key isn't a column | all four of `read`, `insert`, `update`, `delete` |
 | `P402` | a query uses a function the database can't run | compute the value before the query, pass it in |
 | `P403` | a column that isn't there, or a wrong type (also: sorting on `Bool`) | check the row type of the `table` |

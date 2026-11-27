@@ -81,10 +81,17 @@ function toDiagnostic(problem) {
 
 // Checks the file on disk (the saved version), from its own folder, so that
 // the relative paths in its header and imports resolve.
+const checkSeq = new Map();
+const relatedFiles = new Map();
+
 async function check(document, diagnostics, output) {
   if (document.languageId !== "punk" || document.uri.scheme !== "file") return;
+  const key = document.fileName;
+  const seq = (checkSeq.get(key) || 0) + 1;
+  checkSeq.set(key, seq);
   const command = punkCommand(document.uri);
-  const result = await run(command, ["check", "--json", document.fileName], path.dirname(document.fileName));
+  const result = await run(command, ["check", "--json", key], path.dirname(key));
+  if (checkSeq.get(key) !== seq) return;
   if (notFound(result, command, output)) return;
   let report;
   try {
@@ -95,14 +102,22 @@ async function check(document, diagnostics, output) {
   }
   const byFile = new Map();
   for (const problem of report.problems || []) {
-    const file = problem.file ? path.resolve(path.dirname(document.fileName), problem.file) : document.fileName;
+    const file = problem.file ? path.resolve(path.dirname(key), problem.file) : key;
     if (!byFile.has(file)) byFile.set(file, []);
     byFile.get(file).push(toDiagnostic(problem));
   }
-  diagnostics.set(document.uri, byFile.get(document.fileName) || []);
+  diagnostics.set(document.uri, byFile.get(key) || []);
+  const nextRelated = new Set();
   for (const [file, list] of byFile) {
-    if (file !== document.fileName) diagnostics.set(vscode.Uri.file(file), list);
+    if (file !== key) {
+      diagnostics.set(vscode.Uri.file(file), list);
+      nextRelated.add(file);
+    }
   }
+  for (const oldFile of relatedFiles.get(key) || []) {
+    if (!nextRelated.has(oldFile)) diagnostics.delete(vscode.Uri.file(oldFile));
+  }
+  relatedFiles.set(key, nextRelated);
 }
 
 function activate(context) {
@@ -124,7 +139,11 @@ function activate(context) {
         check(document, diagnostics, output);
       }
     }),
-    vscode.workspace.onDidCloseTextDocument((document) => diagnostics.delete(document.uri)),
+    vscode.workspace.onDidCloseTextDocument((document) => {
+      diagnostics.delete(document.uri);
+      relatedFiles.delete(document.fileName);
+      checkSeq.delete(document.fileName);
+    }),
     vscode.commands.registerCommand("punk.check", () => {
       const editor = vscode.window.activeTextEditor;
       if (editor) check(editor.document, diagnostics, output);

@@ -365,8 +365,11 @@ pub fn loadFrom(reader: Reader, dir: []const u8, arena: std.mem.Allocator, imp: 
 }
 
 fn loadAt(reader: Reader, dir: []const u8, arena: std.mem.Allocator, imp: translate_mod.Import, depth: u8) Error!?*const Interface {
-    const base = if (imp.package != null) blk: {
-        const pkg = imp.package_path orelse return null;
+    const base = if (imp.package) |pkg_name| blk: {
+        const pkg = imp.package_path orelse if (reader.platform) |find| find_blk: {
+            const probe = try std.fs.path.join(arena, &.{ dir, "_" });
+            break :find_blk find(reader.ctx, arena, probe, .package, pkg_name) orelse return null;
+        } else return null;
         if (std.mem.find(u8, pkg, "://") != null) {
             const find = reader.packageDir orelse return null;
             break :blk find(reader.ctx, arena, pkg) orelse return null;

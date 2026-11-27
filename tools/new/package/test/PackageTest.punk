@@ -1,0 +1,8 @@
+app [main!] { Platform: platform "cli", Library: "../main.roc" }
+
+import Library.Greeting
+
+main! : () => {}
+main! = fn () -> {}
+
+expect Greeting.forName "punk" == "Hello, punk!"

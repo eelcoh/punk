@@ -20,6 +20,7 @@ Everything not listed there works as in Elm.
 | `punk app.punk [args]` | Build and run the app. |
 | `punk test app.punk` | Run the `expect` tests in the file. |
 | `punk new server notes` | A new app (`cli`, `server` or `tui`) in the folder `notes`, with its `AGENTS.md` and the skills. Only an installed punk has it. |
+| `punk new package my-library` | A new library with a package manifest, a starter module, an API test and agent instructions. |
 
 Work in this loop: write the file, `punk fmt` it, `punk check --json` it, fix
 the first problem, repeat; then run it. Fix problems from the top: a later one
@@ -257,6 +258,22 @@ import Grid                                    -- then use Grid.at
 ```
 
 Everything a module exposes needs a type annotation (rule P201).
+
+### Packages
+
+Create a library with `punk new package my-library`. Its `main.roc` is the
+manifest. The line `package [Greeting] {}` makes the `Greeting.punk` module
+available to consumers. From inside the package, run
+`punk test test/PackageTest.punk` to test it through that manifest.
+
+If an app file is next to the `my-library/` checkout, it can import the
+module using a path relative to the app.
+
+```
+app [main!] { Platform: platform "cli", Library: "my-library/main.roc" }
+
+import Library.Greeting
+```
 
 ## Differences from Elm
 
@@ -2068,6 +2085,19 @@ expect
 
 The app declares `Json: "json"` and imports `Activity`. Run `punk test` on
 the app so the module's package imports resolve in the app's context.
+
+### Design a package API
+
+List modules in `main.roc` when callers should import them directly. Use
+each module's `exposing` list to make its types and operations discoverable.
+Document inputs, errors and the behavior callers can rely on, and keep
+implementation helpers private where the module boundaries allow it.
+
+Keep a reusable package independent of the consumer's platform. Let the
+app acquire values such as the current time and pass them into pure
+functions. Keep a test app that imports the library through `main.roc`.
+Call the public functions in `expect`s so the tests cover the same exports
+and import paths a consumer uses.
 
 ### Make each step visible
 

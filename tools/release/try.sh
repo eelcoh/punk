@@ -1,7 +1,7 @@
 #!/bin/sh
 # Tries a packed release as a user would: installs it with install.sh into a
-# fresh folder, makes an app per platform with `punk new`, runs the cli app
-# and checks the others. Run after package.sh:
+# fresh folder, scaffolds apps and a package with `punk new`, runs the cli
+# app and the package tests, and checks the other apps. Run after package.sh:
 #
 #     sh tools/release/try.sh dist/punk-v0.1.0-linux-x86_64.tar.gz
 set -eu
@@ -22,6 +22,11 @@ out=$("$punk" hello/Hello.punk)
 "$punk" fmt --stdin --path hello/Hello.punk < hello/Hello.punk > "$work/formatted.punk"
 cmp hello/Hello.punk "$work/formatted.punk"
 
+"$punk" new package my-library
+(cd my-library && "$punk" test test/PackageTest.punk)
+test -f my-library/AGENTS.md
+test -f my-library/.claude/skills/punk-check-loop/SKILL.md
+
 "$punk" new server my-notes
 "$punk" check my-notes/MyNotes.punk
 grep -qF 'punk-server = { git = "https://github.com/eelcoh/punk", tag = "' my-notes/server/Cargo.toml ||
@@ -34,4 +39,4 @@ grep -q "^ARG PUNK_VERSION=$(cat "$work/punk/current/VERSION")\$" my-notes/Docke
 
 "$punk" new tui counter
 "$punk" check counter/Counter.punk
-echo "try.sh: $(basename "$archive") installs, and its apps check"
+echo "try.sh: $(basename "$archive") installs and its scaffolds check"

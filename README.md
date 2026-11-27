@@ -53,14 +53,15 @@ the download against the release's `SHA256SUMS` first. `PUNK_VERSION`,
 `PUNK_HOME` and `PUNK_BIN_DIR` change what and where (see `install.sh`).
 Releases are made by `.github/workflows/release.yml` on a `v*` tag.
 
-Then make an app, with its `AGENTS.md` and punk's skills, as a git repository:
+Then make an app or a package with its `AGENTS.md` and punk's skills:
 
 ```
 punk new server notes           # or cli, or tui
+punk new package my-library     # a library with a public API test
 ```
 
-In this repository that is `sh tools/new/new.sh server notes`, with the
-platforms of the repository.
+From this repository, use `sh tools/new/new.sh` with the same arguments.
+New apps use the platforms in the repository.
 
 For VS Code there is an extension in `editors/vscode/`: highlighting,
 `punk fmt` on save, and the problems of `punk check --json`.

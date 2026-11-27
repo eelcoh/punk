@@ -31,6 +31,18 @@ zig build
 (cd examples/shortener/server && cargo test)
 ```
 
+## Server ABI round trips
+
+The ABI tests link a compiled punk app with the Rust server host and run
+requests with in-memory SQL and Mongo capabilities. They check what crosses
+the boundary in both directions, including typed cells, nested documents,
+counts, and error records. The tests need no database services.
+
+```
+zig build
+(cd test/server-abi && cargo test --locked)
+```
+
 The `punk` workflow (`.github/workflows/punk.yml`) runs these, together
 with `zig test src/punk/test.zig` and the `cargo test`s of the platform hosts and
 the shortener, on every push to and PR into `main`. On the 1st and

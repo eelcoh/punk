@@ -1,0 +1,4 @@
+# The same Rust as the server host.
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt"]

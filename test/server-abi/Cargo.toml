@@ -1,0 +1,13 @@
+[package]
+name = "punk-server-abi-test"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[test]]
+name = "roundtrip"
+path = "roundtrip.rs"
+
+[dependencies]
+punk-server = { path = "../../platforms/server/host" }
+ambit-server-sim = { git = "https://github.com/eelcoh/ambit", rev = "d039ab5afb81fe81faa5ce00c41e937e4879ea85" }

@@ -12,6 +12,7 @@ zig test src/punk/test.zig
 (cd platforms/tui/host && cargo test --locked)
 # shellcheck disable=SC2086
 zig build ${ZIG_BUILD_FLAGS:-}
+(cd test/server-abi && cargo test --locked)
 sh test/setup.sh
 sh test/golden.sh
 # The server apps: ambit's spec against the punk shortener, on a key-value

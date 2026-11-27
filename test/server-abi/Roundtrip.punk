@@ -1,0 +1,97 @@
+app [Settings, main] { Platform: platform "server" }
+
+import Platform.Bson
+import Platform.Config
+import Platform.Db
+import Platform.Doc
+import Platform.Filter
+import Platform.Http exposing (Request, Response)
+import Platform.Mongo
+import Platform.Postgres
+import Platform.Row
+import Platform.Sql
+
+type alias Settings = {}
+
+main =
+    { settings = Config.succeed {}, handle! = handle! }
+
+handle! : Settings -> Request => Response
+handle! = fn _, req ->
+    case req.path of
+        "/sql/rows" -> sqlResponse (sqlRows! req.query)
+        "/sql/affected" -> sqlResponse (sqlAffected! req.query)
+        "/sql/transaction" ->
+            sqlResponse (Db.transaction! (fn _ -> Ok "committed"))
+        "/mongo/documents" -> mongoResponse (mongoDocuments! req.query)
+        "/mongo/count" -> mongoResponse (mongoCount! req.query)
+        _ -> text 404 "unknown path"
+
+sql : Str -> Sql.Query
+sql = fn label ->
+    Sql.query
+        "SELECT $1::text AS label, $2::bigint AS amount"
+        [Sql.text label, Sql.int -4294967297]
+
+row : Row.Decoder Str
+row =
+    Row.map2
+        (fn label, amount -> "${label}:${String.fromInt amount}")
+        (Row.field "label" Row.text)
+        (Row.field "amount" Row.int)
+
+sqlRows! : Str => Result Str _
+sqlRows! = fn label ->
+    rows = try Postgres.rows! row (sql label)
+    Ok (String.join "|" rows)
+
+sqlAffected! : Str => Result Str _
+sqlAffected! = fn label ->
+    affected = try Postgres.execute! (sql label)
+    Ok (U64.toStr affected)
+
+sqlResponse : Result Str _ -> Response
+sqlResponse = fn result ->
+    case result of
+        Ok body -> text 200 body
+        Err (PgErr problem) -> text 503 "${problem.code}:${problem.message}"
+        Err (RowErr problem) -> text 500 problem
+
+search : Str -> Mongo.Find
+search = fn label ->
+    Mongo.collection "abi_roundtrip"
+        |> Mongo.find (Filter.equals "label" (Bson.text label))
+        |> Mongo.sortByDescending "amount"
+        |> Mongo.drop 3
+        |> Mongo.take 5
+
+document : Doc.Decoder Str
+document =
+    Doc.map2
+        (fn label, amount -> "${label}:${String.fromInt amount}")
+        (Doc.field "details" (Doc.field "label" Doc.text))
+        (Doc.field "amount" Doc.int)
+
+mongoDocuments! : Str => Result Str _
+mongoDocuments! = fn label ->
+    documents = try (search label |> Mongo.all! document)
+    Ok (String.join "|" documents)
+
+mongoCount! : Str => Result Str _
+mongoCount! = fn label ->
+    count = try (search label |> Mongo.count!)
+    Ok (String.fromInt count)
+
+mongoResponse : Result Str _ -> Response
+mongoResponse = fn result ->
+    case result of
+        Ok body -> text 200 body
+        Err (MongoErr problem) -> text 503 "${problem.code}:${problem.message}"
+        Err (DocErr problem) -> text 500 problem
+
+text : U16 -> Str -> Response
+text = fn status, body ->
+    { status = status
+    , headers = [("x-abi", "a heap-allocated response header value"), ("content-type", "text/plain")]
+    , body = Str.toUtf8 body
+    }

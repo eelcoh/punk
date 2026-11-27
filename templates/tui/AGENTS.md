@@ -5,6 +5,7 @@ This is a terminal app in [punk-lang](https://github.com/eelcoh/punk) on the
 `main = { init = init, update = update, view = view, subscriptions = subscriptions }`. Read the language reference first:
 `~/.punk/current/share/punk/llms.txt` (or `src/punk/llms.txt` in the punk
 repository).
+See **Style** in that reference for module boundaries and readable functions.
 
 ## Rules
 

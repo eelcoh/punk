@@ -23,6 +23,20 @@ loop is clean.
    run the tests: `punk test File.punk` for `expect`s, and for a server or
    terminal app, `cargo test` in its Rust crate.
 
+## Readability pass
+
+Before handing off a change, read the changed code using **Style** in
+`llms.txt`.
+
+- Check that related types and operations are easy to find, and that each
+  module exposes the functions its callers need.
+- Follow the successful path through the function. Give meaningful steps
+  names, and use `case` where the branches make different decisions.
+- Check that effects are visible in the handler or named `!` helpers. Keep
+  decisions pure where possible and keep transaction boundaries visible.
+- For style-only changes, check the existing tests for wire responses,
+  error mapping and effect order.
+
 ## What the codes usually mean
 
 | Code | Usual cause | Usual fix |

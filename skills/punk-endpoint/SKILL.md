@@ -48,8 +48,9 @@ from `(Http.method req, Http.segments req)`. Models to copy from are
 
 ## Rules
 
-- An effect (`!`) runs only in `handle!` and the functions it calls, never
-  in a query or a decoder.
+- Keep routing, validation, query construction and response encoding pure.
+  Run capabilities in `handle!` or focused `!` helpers. See **Style** in
+  `llms.txt` for module boundaries, readable pipelines and server layout.
 - The platform's modules an app imports are all it can do. Don't import one
   you don't need.
 - Keep SQL out of strings. Use the query language, and `Sql.query` with

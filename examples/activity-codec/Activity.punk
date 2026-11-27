@@ -1,0 +1,29 @@
+module Activity exposing (Activity, decode, encode)
+
+import Json.Decode as D
+import Json.Encode as E
+import Json.Value
+
+type alias Activity =
+    { title : Str
+    , active : Bool
+    }
+
+decode : D.Decoder Activity
+decode =
+    D.map2 (fn title, active -> { title, active })
+        (D.field "title" D.string)
+        (D.field "active" D.bool)
+
+encode : Activity -> Value
+encode = fn activity ->
+    E.object
+        [ ("title", E.string activity.title)
+        , ("active", E.bool activity.active)
+        ]
+
+expect
+    D.decodeString
+        decode
+        (E.encode 0 (encode { title = "Read the code", active = True }))
+        == Ok { title = "Read the code", active = True }

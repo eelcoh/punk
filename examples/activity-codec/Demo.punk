@@ -1,0 +1,28 @@
+app [main!] { Platform: platform "cli", Json: "json" }
+
+import Activity
+import Json.Decode as D
+import Json.Encode as E
+import Platform.Stdin
+import Platform.Stdout
+
+normalize : Str -> Result Str Str
+normalize = fn payload ->
+    D.decodeString Activity.decode payload
+        |> Result.map Activity.encode
+        |> Result.map (E.encode 0)
+        |> Result.mapError D.errorToString
+
+sample : Str
+sample = "{\"active\":true,\"title\":\"Read the code\"}"
+
+expect normalize sample == Ok "{\"title\":\"Read the code\",\"active\":true}"
+
+expect Result.isErr (normalize "{\"active\":true}")
+
+main! : () => {}
+main! = fn () ->
+    payload = Stdin.readAll! ()
+    case normalize payload of
+        Ok json -> Stdout.line! json
+        Err problem -> Stdout.line! problem

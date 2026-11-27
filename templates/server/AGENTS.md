@@ -7,6 +7,7 @@ the app's `Settings`, and `handle! : Settings -> Request => Response`. Read
 the language reference first:
 `~/.punk/current/share/punk/llms.txt` (or `src/punk/llms.txt` in the punk
 repository).
+See **Style** in that reference for module boundaries and server layout.
 
 ## Rules
 

@@ -15,6 +15,7 @@ zig build ${ZIG_BUILD_FLAGS:-}
 (cd test/server-abi && cargo test --locked)
 sh test/setup.sh
 sh test/golden.sh
+zig-out/bin/punk test examples/activity-codec/Demo.punk
 # The server apps: ambit's spec against the punk shortener, on a key-value
 # store, on Postgres and on Mongo, and the notes kept apart by row-level
 # security.

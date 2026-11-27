@@ -4,6 +4,7 @@ This is a command-line app in [punk-lang](https://github.com/eelcoh/punk) on
 the `cli` platform (`platform "cli"`). Read the language reference first:
 `~/.punk/current/share/punk/llms.txt` (or `src/punk/llms.txt` in the punk
 repository).
+See **Style** in that reference for module boundaries and readable functions.
 
 ## Rules
 

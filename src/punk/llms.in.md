@@ -962,9 +962,96 @@ library view (sorting, marking, searching), with its tests on ambit's sim.
 
 ## Style
 
-- `punk fmt` decides the layout; do not fight it.
-- Annotate every top-level function.
-- Prefer pipelines over nested calls, `case` over nested `if`, and Elm's
-  names (`List.filter`, `String.split`, `Maybe`) where they exist.
-- Return `Result` with made-up error tags instead of crashing.
-- One way to do a thing: `fold` or `List.*` for loops, `try` for errors.
+Use `punk fmt` for layout and annotate top-level functions. The following
+checks help a reader find the code that governs a behavior and follow it.
+
+Use Elm's names where they exist, such as `List.filter`, `String.split`
+and `Maybe`. Use `List.*` or `fold` for iteration, and return a `Result`
+with meaningful error tags for recoverable failures.
+
+### Organize modules around domain types
+
+Keep a domain type with the operations that understand it. Expose the type
+and the operations callers need. Qualify calls such as `Activity.encode` so
+the reader can find them. Keep codec tests with the type. Give distinct wire
+shapes distinct names, such as `decodeCreateInput` for a request body.
+
+`Activity.punk` owns a type and an encoder and decoder for its JSON shape.
+
+@@example activity-codec/Activity.punk@@
+
+The app declares `Json: "json"` and imports `Activity`. Run `punk test` on
+the app so the module's package imports resolve in the app's context.
+
+### Make each step visible
+
+Show the main steps of a successful operation at one indentation level.
+Use a local name or a helper when it describes a meaningful step. Use a
+`case` to keep distinct decisions visible, and `Result.map` and
+`Result.mapError` for pure transformations of a result.
+
+This version combines success and error handling with decoding and encoding
+in one `case`.
+
+```
+normalize : Str -> Result Str Str
+normalize = fn payload ->
+    case D.decodeString Activity.decode payload of
+        Ok activity -> Ok (E.encode 0 (Activity.encode activity))
+        Err problem -> Err (D.errorToString problem)
+```
+
+The example app puts the transformations in a pipeline. Its `main!` reads
+and writes, and its pure `normalize` function can be tested with a string.
+
+@@example activity-codec/Demo.punk@@
+
+In a server, keep routing, validation, query construction and response
+encoding pure. Read the clock, generate IDs, run queries and log in the
+handler or focused `!` helpers. Pass acquired values into pure functions
+when it lets tests supply their own inputs. Keep the order of effects and
+the start and end of a transaction easy to see. Prefer `try` when an error
+should stop the whole operation and be handled by the caller.
+
+### Lay out a multi-file server
+
+For a small server, keep the punk sources in `src/` and the Rust host and
+HTTP integration tests in `server/`. Sibling modules keep the paths short.
+Start with modules that have a clear responsibility, then split further
+when it helps explain what the app does. For example, an activity feed can
+use this layout.
+
+```text
+src/
+    Activities.punk  HTTP entry point, routing and table declarations
+    Activity.punk    Activity type, validation and codecs
+    JsonFields.punk  Shared JSON field checks
+    schema.sql       Generated migrations
+server/
+    build.rs         Builds src/Activities.punk
+    src/             Rust host and capability wiring
+    tests/           HTTP integration tests
+```
+
+Keep `schema.sql` beside the app entry point. Model the storage row
+separately when it differs from the domain or wire shape. A table can use a
+local row alias or an exposed, storable record alias from another module.
+If you move the app, update the entry point in `server/build.rs`, have Cargo
+watch `src/` for source changes, and update where the host includes the schema.
+
+```
+punk fmt --check src/*.punk
+punk check --json src/Activities.punk
+punk test src/Activities.punk
+punk check --schema src/Activities.punk
+(cd server && cargo test)
+```
+
+Set `PUNK_TEST_POSTGRES` when running the Postgres specs.
+`punk check --schema` can write a migration. After a style-only refactor,
+check that it reports the schema is up to date and keep the HTTP behavior,
+error mapping and effect order covered by the existing tests.
+
+On v0.1.3, use lowercase `json.*` when importing the JSON package from a
+sibling module and keep a table's row alias in the file that declares the
+table. The codec example uses the current compiler's `Json.*` syntax.

@@ -1,0 +1,13 @@
+module Entry exposing (Entry, archived)
+
+type alias Entry =
+    { id : Str
+    , title : Str
+    }
+
+table archived : Entry
+    key id
+    read everyone
+    insert nobody
+    update nobody
+    delete nobody

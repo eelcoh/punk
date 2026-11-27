@@ -9,12 +9,13 @@ Everything not listed there works as in Elm.
 
 ## Tools
 
-The `punk` command is the Roc compiler (`zig-out/bin/punk`, also `roc`).
+`zig build` installs the `punk` command at `zig-out/bin/punk`.
 
 | Command | What it does |
 |---------|--------------|
 | `punk check --json app.punk` | Type-check without building. Problems as JSON on stdout (see "Errors"). Exit code 1 when there are errors. Fast (under a second). |
 | `punk fmt app.punk ...` | Lay files out in the one canonical form. `--check` only lists files that are not formatted. |
+| `punk fmt --stdin --path app.punk` | Format stdin to stdout, resolving imports relative to `app.punk` and leaving it untouched. |
 | `punk app.punk [args]` | Build and run the app. |
 | `punk test app.punk` | Run the `expect` tests in the file. |
 | `punk new server notes` | A new app (`cli`, `server` or `tui`) in the folder `notes`, with its `AGENTS.md` and the skills. Only an installed punk has it. |

@@ -1,0 +1,21 @@
+app [Settings, main] { Platform: platform "server", Data: "Domain/main.roc" }
+
+import Platform.Config
+import Platform.Http exposing (Request, Response)
+import Data.Entry exposing (Entry)
+
+type alias Settings = {}
+
+main =
+    { settings = Config.succeed {}, handle! = handle! }
+
+table entries : Entry
+    key id
+    read everyone
+    insert nobody
+    update nobody
+    delete nobody
+
+handle! : Settings -> Request => Response
+handle! = fn _, _ ->
+    { status = 200, headers = [], body = Str.toUtf8 "ready" }

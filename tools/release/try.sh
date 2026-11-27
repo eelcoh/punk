@@ -19,6 +19,8 @@ cd "$work"
 out=$("$punk" hello/Hello.punk)
 [ "$out" = "Hello, world!" ] || { echo "try.sh: hello says \"$out\""; exit 1; }
 "$punk" test hello/Hello.punk
+"$punk" fmt --stdin --path hello/Hello.punk < hello/Hello.punk > "$work/formatted.punk"
+cmp hello/Hello.punk "$work/formatted.punk"
 
 "$punk" new server my-notes
 "$punk" check my-notes/MyNotes.punk

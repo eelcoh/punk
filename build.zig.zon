@@ -19,5 +19,6 @@
         "src",
         "platforms",
         "packages",
+        "tools/release/punk.sh",
     },
 }

@@ -7,8 +7,9 @@ Support for [punk-lang](https://github.com/eelcoh/punk) (`.punk` files):
   annotations, `fn`, `case ... of`, `fold ... into ... with`, `try`, effect
   names ending in `!`, string interpolation `${...}`, Elm comments
   `--`, `{- -}` and `{-| -}`, and the query language's `table` declarations.
-- **Formatting**: `punk fmt` is the formatter of `.punk` files, and runs on
-  save (`editor.formatOnSave` is on for punk; turn it off per language).
+- **Formatting**: `punk fmt --stdin --path` formats the current buffer with
+  imports resolved from the document's path. Formatting runs on save
+  (`editor.formatOnSave` is on for punk; turn it off per language).
 - **Problems**: on open and on save, `punk check --json` runs on the file and
   its problems show in the editor and the Problems panel, with their stable
   codes (`P101`, `roc/type-mismatch`, ...). The command "punk: Check this
@@ -16,6 +17,8 @@ Support for [punk-lang](https://github.com/eelcoh/punk) (`.punk` files):
 - Comment toggling (`--`), brackets, and 4 spaces per indentation level.
 
 ## Install
+
+Use the compiler from the same release as the extension for format on save.
 
 Each release carries `punk-lang-<version>.vsix` (`code --install-extension` it), and publishes it on the Marketplace when the repository has the secret `VSCE_PAT`. Or build it from this folder:
 

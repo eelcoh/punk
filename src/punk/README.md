@@ -117,8 +117,7 @@ expected ')' but found 'end of file'
 
 ## For agents: `punk fmt`, `punk check --json`, `llms.txt`
 
-`zig build` also makes `zig-out/bin/punk`, the same compiler under
-punk's name.
+`zig build` installs the `punk` command as `zig-out/bin/punk`.
 
 **`punk fmt file.punk ...`** lays `.punk` files out in one canonical form,
 without options, like elm-format: 4 spaces per indentation level, one space
@@ -135,7 +134,11 @@ only because of a long string stays as it is. `--check` lists the
 files that are not formatted and fails. The formatter works on tokens, keeps
 every comment, and checks its own work: when the Roc translation of the
 result differs from that of the original (ignoring whitespace), it leaves the
-file alone and says so. `punk2roc --fmt file.punk` prints the formatted file.
+file alone and says so. `punk fmt --stdin --path file.punk` reads a buffer
+from stdin and writes the formatted source to stdout. The path gives imports
+their usual context on disk, and the formatter leaves the file at that path
+untouched. Formatting errors go to stderr with the given path and a nonzero
+exit status. `punk2roc --fmt file.punk` prints the formatted file from disk.
 The golden tests check that every file in `examples/` is formatted.
 
 **`punk check --json file.punk`** writes the problems as one JSON document on

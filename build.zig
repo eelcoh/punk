@@ -18,8 +18,17 @@ pub fn build(b: *std.Build) void {
         // Roc's coverage steps pull in kcov on linux-aarch64; punk needs none.
         .coverage = false,
     });
-    const install = b.addInstallBinFile(rocBinary(roc), "punk");
-    b.getInstallStep().dependOn(&install.step);
+    const libexec: std.Build.InstallDir = .{ .custom = "libexec" };
+    b.getInstallStep().dependOn(&b.addInstallFileWithDir(rocBinary(roc), libexec, "punk").step);
+    b.getInstallStep().dependOn(&b.addInstallBinFile(b.path("tools/release/punk.sh"), "punk").step);
+
+    // Buffer formatting uses punk's formatter directly, with the file's import context.
+    const fmt_stdin = b.addExecutable(.{ .name = "punk-fmt", .root_module = b.createModule(.{
+        .root_source_file = b.path("src/punk/fmt_stdin.zig"),
+        .target = target,
+        .optimize = optimize,
+    }) });
+    b.getInstallStep().dependOn(&b.addInstallArtifact(fmt_stdin, .{ .dest_dir = .{ .override = libexec } }).step);
 
     // Roc's builtins, which src/punk/gen_llms.py and gen_stdlib.py read.
     const builtins = b.addInstallFile(roc.path("src/build/roc/Builtin.roc"), "share/roc/Builtin.roc");

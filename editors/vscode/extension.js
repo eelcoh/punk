@@ -4,8 +4,6 @@
 
 const vscode = require("vscode");
 const { execFile } = require("child_process");
-const fs = require("fs");
-const os = require("os");
 const path = require("path");
 
 const SEVERITY = {
@@ -24,11 +22,16 @@ function punkCommand(uri) {
   return configured;
 }
 
-function run(command, args, cwd) {
+function run(command, args, cwd, input) {
   return new Promise((resolve) => {
-    execFile(command, args, { cwd, maxBuffer: 16 * 1024 * 1024, timeout: 60_000 }, (error, stdout, stderr) => {
-      resolve({ error, code: error && typeof error.code === "number" ? error.code : 0, stdout, stderr });
+    const child = execFile(command, args, { cwd, maxBuffer: 16 * 1024 * 1024, timeout: 60_000 }, (error, stdout, stderr) => {
+      resolve({ error, stdout, stderr });
     });
+    if (input !== undefined) {
+      // If the process exits before reading the buffer, execFile reports the failure.
+      child.stdin.on("error", () => {});
+      child.stdin.end(input);
+    }
   });
 }
 
@@ -40,27 +43,24 @@ function notFound(result, command, output) {
   return false;
 }
 
-// `punk fmt` rewrites files in place, so the formatter lays out a copy of the
-// editor's text in a temporary file and replaces the whole document with it.
+// Pass the buffer on stdin and its path separately so imports resolve on disk.
 async function format(document, output) {
   const command = punkCommand(document.uri);
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "punk-fmt-"));
-  const file = path.join(dir, path.basename(document.fileName) || "Main.punk");
-  try {
-    fs.writeFileSync(file, document.getText());
-    const result = await run(command, ["fmt", file], dir);
-    if (notFound(result, command, output)) return [];
-    if (result.code !== 0) {
-      output.appendLine(`punk fmt failed:\n${result.stdout}${result.stderr}`);
-      return [];
-    }
-    const formatted = fs.readFileSync(file, "utf8");
-    if (formatted === document.getText()) return [];
-    const all = new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length));
-    return [vscode.TextEdit.replace(all, formatted)];
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
+  const dir = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  const file = path.isAbsolute(document.fileName) && document.fileName.endsWith(".punk")
+    ? document.fileName
+    : path.join(dir, "Untitled.punk");
+  const version = document.version;
+  const source = document.getText();
+  const result = await run(command, ["fmt", "--stdin", "--path", file], undefined, source);
+  if (notFound(result, command, output)) return [];
+  if (result.error) {
+    output.appendLine(`punk fmt failed:\n${result.stderr || result.error.message}`);
+    return [];
   }
+  if (document.version !== version || result.stdout === source) return [];
+  const all = new vscode.Range(document.positionAt(0), document.positionAt(source.length));
+  return [vscode.TextEdit.replace(all, result.stdout)];
 }
 
 function toDiagnostic(problem) {

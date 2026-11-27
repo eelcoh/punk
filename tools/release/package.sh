@@ -7,8 +7,9 @@
 #
 # The archive holds, under punk-<version>-<os>-<arch>/:
 #
-#   bin/punk                    the command: `punk new`, else the compiler
+#   bin/punk                    the command launcher
 #   libexec/punk                the compiler
+#   libexec/punk-fmt            the formatter for editor buffers
 #   platforms/cli/              the cli platform: its API and its prebuilt host
 #                               (targets/<target>/), so cli apps need no Rust
 #   platforms/server/, tui/     their API; their hosts still build with cargo,
@@ -43,9 +44,8 @@ stage="dist/$name"
 rm -rf "$stage" "dist/$name.tar.gz"
 mkdir -p "$stage/bin" "$stage/libexec" "$stage/share/punk" "$stage/platforms" "$stage/packages"
 
-cp zig-out/bin/punk "$stage/libexec/punk"
-cp tools/release/punk.sh "$stage/bin/punk"
-chmod +x "$stage/bin/punk"
+cp zig-out/bin/punk "$stage/bin/punk"
+cp zig-out/libexec/punk zig-out/libexec/punk-fmt "$stage/libexec/"
 cp -R tools/new "$stage/share/punk/new"
 sed -n 's/^ambit-caps = .*rev = "\([0-9a-f]*\)".*/\1/p' platforms/server/host/Cargo.toml > "$stage/share/punk/new/ambit-rev"
 test -s "$stage/share/punk/new/ambit-rev" || { echo "package.sh: no ambit rev in platforms/server/host/Cargo.toml"; exit 1; }

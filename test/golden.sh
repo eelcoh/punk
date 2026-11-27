@@ -109,17 +109,28 @@ for f in $server_apps; do
     fi
 done
 
-# A schema.sql next to an app with tables is up to date: `punk check
-# --schema` (run on a copy, as it writes schema.sql) has no version to add.
-for schema in $(find examples -name schema.sql | sort); do
+# Copy the source tree for the schema check, which can write schema.sql.
+# Keep import paths intact, including nested modules.
+check_schema() {
+    schema=$1
     dir=$(dirname "$schema")
     app=$(grep -l '^app ' "$dir"/*.punk 2>/dev/null | head -n 1)
     [ -z "$app" ] && app=$(grep -l '^table ' "$dir"/*.punk 2>/dev/null | head -n 1)
     copy="$work/schema/$dir"
-    mkdir -p "$copy"
-    if [ -n "$app" ]; then cp "$dir"/*.punk "$schema" "$copy/"; fi
     if [ -z "$app" ]; then
         echo "FAIL $schema: no .punk file next to it declares an app or table"
+        failed=$((failed + 1))
+    elif ! mkdir -p "$copy" || ! cp "$schema" "$copy/" ||
+        ! find "$dir" \( -name target -o -name .git \) -prune -o \
+            -type f \( -name '*.punk' -o -name '*.roc' \) -exec sh -c '
+                source_dir=$1 dest=$2
+                shift 2
+                for file do
+                    target="$dest/${file#"$source_dir"/}"
+                    mkdir -p "$(dirname "$target")" && cp "$file" "$target" || exit 1
+                done
+            ' sh "$dir" "$copy" {} +; then
+        echo "FAIL $schema: could not copy its source tree"
         failed=$((failed + 1))
     elif "$roc" check --schema "$copy/$(basename "$app")" > "$work/schema.out" 2>&1 && grep -q 'is up to date' "$work/schema.out"; then
         echo "ok   schema $schema"
@@ -129,7 +140,41 @@ for schema in $(find examples -name schema.sql | sort); do
         sed 's/^/     /' "$work/schema.out" | tail -n 30
         failed=$((failed + 1))
     fi
-done
+}
+
+find examples -name schema.sql | sort > "$work/schemas"
+while IFS= read -r schema; do
+    check_schema "$schema"
+done < "$work/schemas"
+
+# A buffer can differ from the app on disk. Both modes need the nested
+# module: the table row alias is defined there.
+fmt_app="$golden/fmt/server/Server.punk"
+check_schema test/golden/fmt/server/schema.sql
+cp "$fmt_app" "$work/fmt.before"
+sed 's/"ready"/"from the buffer"/' "$fmt_app" > "$work/fmt.expected"
+sed 's/^handle! = /handle!   =   /' "$work/fmt.expected" > "$work/fmt.input"
+if "$roc" fmt --stdin --path "$fmt_app" < "$work/fmt.input" > "$work/fmt.out" 2> "$work/fmt.err" &&
+    cmp -s "$work/fmt.expected" "$work/fmt.out" && cmp -s "$work/fmt.before" "$fmt_app"; then
+    echo "ok   punk fmt --stdin with nested imports"
+    passed=$((passed + 1))
+else
+    echo "FAIL punk fmt --stdin with nested imports"
+    diff -u "$work/fmt.expected" "$work/fmt.out"
+    cat "$work/fmt.err"
+    failed=$((failed + 1))
+fi
+
+if printf 'broken = (\n' | "$roc" fmt --stdin --path "$fmt_app" > "$work/fmt.out" 2> "$work/fmt.err"; then
+    echo "FAIL punk fmt --stdin: accepted invalid input"
+    failed=$((failed + 1))
+elif [ -s "$work/fmt.out" ] || ! grep -qF "$fmt_app:" "$work/fmt.err"; then
+    echo "FAIL punk fmt --stdin: expected a diagnostic on stderr with the app path"
+    failed=$((failed + 1))
+else
+    echo "ok   punk fmt --stdin diagnostics"
+    passed=$((passed + 1))
+fi
 
 # Every other app in examples/ needs at least one case.
 for f in $(cd examples && grep -l '^app' $(find . -name '*.punk') | sed 's|^\./||' | grep -vxF "$server_apps" | sort); do

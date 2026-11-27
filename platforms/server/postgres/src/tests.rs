@@ -516,3 +516,43 @@ fn a_schema_without_tables_has_no_versions() {
         "P0405"
     );
 }
+
+#[test]
+fn statement_timeout_defaults_and_clamping() {
+    assert_eq!(statement_timeout_ms(Duration::ZERO), 0);
+    assert_eq!(statement_timeout_ms(Duration::from_micros(500)), 1);
+    assert_eq!(statement_timeout_ms(Duration::from_millis(250)), 250);
+    assert_eq!(statement_timeout_ms(Duration::from_secs(30)), 30_000);
+    assert_eq!(
+        statement_timeout_ms(Duration::from_secs(u64::MAX)),
+        i32::MAX as u64
+    );
+
+    let db = Postgres::new("postgres://app@localhost/db", 2).unwrap();
+    assert_eq!(db.pool.statement_timeout, Some(DEFAULT_STATEMENT_TIMEOUT));
+
+    let custom = db.with_statement_timeout(Some(Duration::from_secs(5)));
+    assert_eq!(custom.pool.statement_timeout, Some(Duration::from_secs(5)));
+
+    let disabled = custom.with_statement_timeout(None);
+    assert_eq!(disabled.pool.statement_timeout, None);
+
+    let from_url = Postgres::new(
+        "postgres://app@localhost/db?options=-c%20statement_timeout%3D1234",
+        2,
+    )
+    .unwrap();
+    assert_eq!(from_url.pool.statement_timeout, None);
+}
+
+#[test]
+fn slow_query_hits_statement_timeout_and_keeps_connection_usable() {
+    let Some(db) = pool("timeout", "") else {
+        return;
+    };
+    let db = db.with_statement_timeout(Some(Duration::from_millis(50)));
+    let err = db.run("SELECT pg_sleep(1)", &[]).unwrap_err();
+    assert_eq!(err.code, "57014", "expected query_canceled, got: {err:?}");
+    let rows = db.run("SELECT 1", &[]).unwrap();
+    assert_eq!(rows.rows, vec![vec![Value::Int(1)]]);
+}

@@ -47,6 +47,9 @@ pub mod tls;
 /// How many prepared statements a connection keeps; past that it starts again.
 const STATEMENTS: usize = 256;
 
+/// Default maximum time a single SQL statement may run on a pooled connection.
+const DEFAULT_STATEMENT_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// A pool of connections to one Postgres database.
 pub struct Postgres {
     pool: Arc<Pool>,
@@ -57,6 +60,7 @@ struct Pool {
     tls: MakeRustlsConnect,
     max: usize,
     wait: Duration,
+    statement_timeout: Option<Duration>,
     state: Mutex<State>,
     freed: Condvar,
 }
@@ -95,12 +99,42 @@ impl Postgres {
         // Hermit's kernel has no TCP keepalive: asking for it fails the connection.
         #[cfg(target_os = "hermit")]
         config.keepalives(false);
+        // Keep an explicit `statement_timeout` from the connection string's `options`.
+        let statement_timeout = if config
+            .get_options()
+            .is_some_and(|o| o.contains("statement_timeout"))
+        {
+            None
+        } else {
+            Some(DEFAULT_STATEMENT_TIMEOUT)
+        };
         Self {
             pool: Arc::new(Pool {
                 config,
                 tls,
                 max: max.max(1),
                 wait: Duration::from_secs(5),
+                statement_timeout,
+                state: Mutex::new(State {
+                    idle: Vec::new(),
+                    open: 0,
+                }),
+                freed: Condvar::new(),
+            }),
+        }
+    }
+
+    /// Sets how long a single SQL statement may run on each connection before Postgres cancels it
+    /// (SQLSTATE `57014`). Defaults to 30 seconds unless the connection string's `options`
+    /// already set `statement_timeout`. Pass `None` to leave Postgres's own setting untouched.
+    pub fn with_statement_timeout(self, timeout: Option<Duration>) -> Self {
+        Self {
+            pool: Arc::new(Pool {
+                config: self.pool.config.clone(),
+                tls: self.pool.tls.clone(),
+                max: self.pool.max,
+                wait: self.pool.wait,
+                statement_timeout: timeout,
                 state: Mutex::new(State {
                     idle: Vec::new(),
                     open: 0,
@@ -140,7 +174,7 @@ impl Pool {
                     .config
                     .connect(self.tls.clone())
                     .map_err(db_error)
-                    .and_then(checked)
+                    .and_then(|client| checked(client, self.statement_timeout))
                 {
                     Ok(client) => Ok(Connection {
                         client,
@@ -284,9 +318,19 @@ impl Drop for PgTransaction {
     }
 }
 
+/// Converts a statement timeout into milliseconds for Postgres (`SET statement_timeout`),
+/// rounding sub-millisecond non-zero durations up to 1 ms so they do not disable the timeout.
+fn statement_timeout_ms(timeout: Duration) -> u64 {
+    if timeout.is_zero() {
+        return 0;
+    }
+    let ms = timeout.as_millis().max(1);
+    ms.min(i32::MAX as u128) as u64
+}
+
 /// A new connection, if its role keeps to row-level security: a superuser and a role with
-/// `BYPASSRLS` see every row, whatever the policies say.
-fn checked(mut client: Client) -> Result<Client, DbError> {
+/// `BYPASSRLS` see every row, whatever the policies say. Applies the pool's statement timeout.
+fn checked(mut client: Client, statement_timeout: Option<Duration>) -> Result<Client, DbError> {
     let row = client
         .query_one(
             "SELECT rolname::text, rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user",
@@ -302,6 +346,14 @@ fn checked(mut client: Client) -> Result<Client, DbError> {
                 "the app connects as the role {role:?}, which skips row-level security (it is a superuser or has BYPASSRLS); give the app a role of its own, and make the tables with `Owner`"
             ),
         ));
+    }
+    if let Some(timeout) = statement_timeout {
+        client
+            .batch_execute(&format!(
+                "SET statement_timeout = {}",
+                statement_timeout_ms(timeout)
+            ))
+            .map_err(db_error)?;
     }
     Ok(client)
 }

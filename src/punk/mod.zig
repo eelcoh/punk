@@ -386,11 +386,12 @@ fn loadAt(reader: Reader, dir: []const u8, arena: std.mem.Allocator, imp: transl
         } else {
             var diag: Diagnostic = .{};
             // A syntax error is reported when the module itself is translated.
-            // The module's own imports, for the tables they bring.
+            // The module's own imports resolve relative to the package/app root (`base`),
+            // matching Roc's module resolution for nested modules (`Domain.Activity`).
             var resolver: ?translate_mod.Resolver = null;
             if (depth < max_depth) {
                 const ctx = try arena.create(LoadCtx);
-                ctx.* = .{ .reader = reader, .dir = std.fs.path.dirname(file) orelse ".", .depth = depth + 1 };
+                ctx.* = .{ .reader = reader, .dir = base, .depth = depth + 1 };
                 resolver = .{ .ctx = ctx, .load = load };
             }
             iface.* = translate_mod.punkInterface(arena, src, &diag, resolver) catch |err| switch (err) {

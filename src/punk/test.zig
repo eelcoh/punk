@@ -1115,7 +1115,152 @@ test "modules: tables shared between modules" {
     // Only what the module exposes, and one table of a name.
     try checkWithError("app [main!] { pf: platform \"p.roc\" }\n\nimport pf.Db\nimport Tables exposing (users)\n", 4, "Tables does not expose users");
     try checkWithError("app [main!] { pf: platform \"p.roc\" }\n\nimport pf.Db\nimport Tables\n\nq = Tables.users |> Db.all\n", 6, "users");
-    try checkWithError("app [main!] { pf: platform \"p.roc\" }\n\nimport pf.Db\nimport Tables\n\ntype alias L =\n    { id : Str\n    }\n\ntable links : L\n    key id\n    read everyone\n    insert everyone\n    update everyone\n    delete everyone\n", 4, "there is already a table 'links'");
+    try checkWithError("app [main!] { pf: platform \"p.roc\" }\n\nimport pf.Db\nimport Tables\n\ntype alias L =\n    { id : Str\n    }\n\ntable links : L\n    key id\n    read everyone\n    insert everyone\n    update everyone\n    delete everyone\n", 10, "there is already a table 'links'");
+}
+
+test "modules: nested modules (Domain.Activity) and imported table row aliases" {
+    const nested = Files{ .entries = &.{
+        .{
+            "app/Domain/Other.punk",
+            \\module Domain.Other exposing (tag)
+            \\
+            \\tag : Str -> Str -> Str
+            \\tag = fn prefix, s -> "${prefix}:${s}"
+            \\
+        },
+        .{
+            "app/Domain/Activity.punk",
+            \\module Domain.Activity exposing (Activity, ActivityId(..), ActivityRow, BadRow, label)
+            \\
+            \\import Domain.Other
+            \\
+            \\type ActivityId = ActivityId Str
+            \\
+            \\type alias Activity =
+            \\    { id : ActivityId
+            \\    , body : Str
+            \\    }
+            \\
+            \\type alias ActivityRow =
+            \\    { id : ActivityId
+            \\    , title : Str
+            \\    }
+            \\
+            \\type alias SecretRow =
+            \\    { id : Str
+            \\    }
+            \\
+            \\type alias BadRow =
+            \\    { id : Str
+            \\    , tags : List Str
+            \\    }
+            \\
+            \\label : Str -> Str -> Str
+            \\label = fn p, s -> Other.tag p s
+            \\
+        },
+    } };
+    const reader = mod.Reader{ .ctx = @ptrCast(@constCast(&nested)), .read = Files.read };
+
+    // A nested module translates to a type module with its own short name (`Activity := [].{`).
+    const mod_out = try mod.toRocWith(std.testing.allocator, "app/Domain/Activity.punk", nested.entries[1][1], reader);
+    defer std.testing.allocator.free(mod_out);
+    try std.testing.expect(std.mem.indexOf(u8, mod_out, "Activity := [].{\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, mod_out, "ActivityAlias : {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, mod_out, "Domain.Activity :=") == null);
+
+    // An app imports `Domain.Activity`: default alias is `Activity`, partial application works,
+    // `own_alias` resolves, and `table` accepts an imported record alias (unqualified or qualified).
+    const app_src =
+        \\app [main!] { pf: platform "../pf/main.roc" }
+        \\
+        \\import pf.Db
+        \\import Domain.Activity exposing (Activity, ActivityId(..))
+        \\import Domain.Activity as DA
+        \\
+        \\table activities : Activity
+        \\    key id
+        \\    read everyone
+        \\    insert everyone
+        \\    update everyone
+        \\    delete everyone
+        \\
+        \\table summaries : DA.ActivityRow
+        \\    key id
+        \\    read everyone
+        \\    insert everyone
+        \\    update everyone
+        \\    delete everyone
+        \\
+        \\prefixed = Activity.label "note"
+        \\
+        \\find : ActivityId -> Db.Query (Maybe Activity)
+        \\find = fn id ->
+        \\    activities
+        \\        |> Db.filter (fn a -> a.id == id)
+        \\        |> Db.first
+        \\
+        \\allSummaries : Db.Query (List DA.ActivityRow)
+        \\allSummaries =
+        \\    summaries |> Db.all
+        \\
+    ;
+    // Schema generation sees the imported row aliases too.
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var diag: punk.Diagnostic = .{};
+    const schema = (try mod.schemaAt(arena.allocator(), "app/App.punk", app_src, null, &diag, reader)).sql;
+    try std.testing.expect(std.mem.indexOf(u8, schema, "CREATE TABLE activities (") != null);
+    try std.testing.expect(std.mem.indexOf(u8, schema, "CREATE TABLE summaries (") != null);
+
+    const with_schema = Files{ .entries = &.{
+        nested.entries[0],
+        nested.entries[1],
+        .{ "app/schema.sql", schema },
+    } };
+    const full_reader = mod.Reader{ .ctx = @ptrCast(@constCast(&with_schema)), .read = Files.read };
+    const out = try mod.toRocWith(std.testing.allocator, "app/App.punk", app_src, full_reader);
+    defer std.testing.allocator.free(out);
+    try std.testing.expect(std.mem.indexOf(u8, out, "prefixed = |punk_a1| Activity.label(\"note\", punk_a1)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "find : ActivityId -> Db.Query([Just(Activity.ActivityAlias), Nothing])") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "SELECT id, body FROM activities WHERE id = $1 LIMIT 1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "Db.read_wrap(Db.read_text, |punk_w| Activity.ActivityId.ActivityId(punk_w))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "SELECT id, title FROM summaries") != null);
+
+    // Unexposed or unstorable imported row aliases fail with P401 / exposing error.
+    const hidden = mod.toRocWith(std.testing.allocator, "app/App.punk",
+        \\app [main!] { pf: platform "../pf/main.roc" }
+        \\import pf.Db
+        \\import Domain.Activity
+        \\table t : Activity.SecretRow
+        \\    key id
+        \\    read everyone
+        \\    insert everyone
+        \\    update everyone
+        \\    delete everyone
+        \\
+    , reader);
+    try std.testing.expectError(error.ParseError, hidden);
+    const hidden_err = (try mod.syntaxError(std.testing.allocator, "app/App.punk")).?;
+    defer std.testing.allocator.free(hidden_err);
+    try std.testing.expect(std.mem.indexOf(u8, hidden_err, "Activity does not expose SecretRow") != null);
+
+    const bad = mod.toRocWith(std.testing.allocator, "app/App.punk",
+        \\app [main!] { pf: platform "../pf/main.roc" }
+        \\import pf.Db
+        \\import Domain.Activity exposing (BadRow)
+        \\table t : BadRow
+        \\    key id
+        \\    read everyone
+        \\    insert everyone
+        \\    update everyone
+        \\    delete everyone
+        \\
+    , reader);
+    try std.testing.expectError(error.ParseError, bad);
+    const bad_err = (try mod.syntaxError(std.testing.allocator, "app/App.punk")).?;
+    defer std.testing.allocator.free(bad_err);
+    try std.testing.expect(std.mem.indexOf(u8, bad_err, "P401") != null);
 }
 
 test "modules: scanning a Roc module" {

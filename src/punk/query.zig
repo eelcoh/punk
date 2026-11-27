@@ -193,26 +193,72 @@ pub fn resolveTables(e: *Emitter, items: []const tr.Item) Error!void {
     };
 }
 
-fn resolveTable(e: *Emitter, items: []const tr.Item, decl: TableDecl) Error!*Table {
-    const a = e.a;
-    const ty = findAlias(items, decl.row_type) orelse {
-        return e.errAtRule(decl.row_type, .table_decl, try std.fmt.allocPrint(a, "the table '{s}' holds rows of type {s}, but this module has no 'type alias {s} = {{ ... }}'", .{ decl.name, decl.row_type, decl.row_type }));
-    };
+/// The storable columns of a closed, non-empty record type alias, or null when
+/// any field cannot be stored as a table column.
+pub fn recordColumns(a: Allocator, items: []const tr.Item, ty: *const tr.Type) Allocator.Error!?[]const Column {
     var inner = ty;
     while (inner.* == .paren) inner = inner.paren;
-    if (inner.* != .record or inner.record.ext != null or inner.record.fields.len == 0) {
-        return e.errAtRule(decl.row_type, .table_decl, try std.fmt.allocPrint(a, "the rows of a table are a record: 'type alias {s} = {{ id : Str, ... }}'", .{decl.row_type}));
-    }
+    if (inner.* != .record or inner.record.ext != null or inner.record.fields.len == 0) return null;
     var columns: std.ArrayList(Column) = .empty;
     for (inner.record.fields) |f| {
-        const col_ty = columnType(items, f.ty) orelse {
-            return e.errAtRule(f.name, .table_decl, try std.fmt.allocPrint(a, "the column '{s}' of the table '{s}' can't be stored: a column is a Str, Int, Float, Bool, Posix, Uuid, Dec or Value (JSON), a type with one tag that holds one of these (type LinkId = LinkId Str), or a Maybe of one of these when it can be empty", .{ f.name, decl.name }));
-        };
-        if (col_ty.base == .json and e.json_alias == null) {
-            return e.errAtRule(f.name, .table_decl, try std.fmt.allocPrint(a, "the column '{s}' is JSON, a Value of the json package: add 'import Json.Value' (and 'Json: \"json\"' to the packages of the app)", .{f.name}));
-        }
+        const col_ty = columnType(items, f.ty) orelse return null;
         const plain = try tr.snake(a, f.name);
         try columns.append(a, .{ .name = f.name, .sql = try sqlIdent(a, plain), .plain = plain, .ty = col_ty });
+    }
+    return columns.items;
+}
+
+fn importedRowColumns(e: *Emitter, decl: TableDecl) Error!?[]Column {
+    const a = e.a;
+    const found: struct { alias: []const u8, cols: ?[]const Column } = if (std.mem.findScalarLast(u8, decl.row_type, '.')) |dot| blk: {
+        const mod_alias = decl.row_type[0..dot];
+        const type_name = decl.row_type[dot + 1 ..];
+        const iface = e.modules.get(mod_alias) orelse return null;
+        if (!iface.exposesUpper(type_name)) {
+            return e.errAtRule(decl.row_type, .table_decl, try std.fmt.allocPrint(a, "{s} does not expose {s}", .{ mod_alias, type_name }));
+        }
+        const cols = iface.record_aliases.get(type_name) orelse return null;
+        break :blk .{ .alias = mod_alias, .cols = cols };
+    } else blk: {
+        const rec = e.exposed_record_aliases.get(decl.row_type) orelse return null;
+        break :blk .{ .alias = rec.alias, .cols = rec.columns };
+    };
+    const cols = found.cols orelse {
+        return e.errAtRule(decl.row_type, .table_decl, try std.fmt.allocPrint(a, "the rows of the table '{s}' are of type {s}, which has columns that can't be stored: a column is a Str, Int, Float, Bool, Posix, Uuid, Dec or Value (JSON), a type with one tag that holds one of these (type LinkId = LinkId Str), or a Maybe of one of these when it can be empty", .{ decl.name, decl.row_type }));
+    };
+    const out = try a.dupe(Column, cols);
+    for (out) |*c| c.ty = try e.importedType(c.ty, found.alias);
+    return out;
+}
+
+fn resolveTable(e: *Emitter, items: []const tr.Item, decl: TableDecl) Error!*Table {
+    const a = e.a;
+    var columns: std.ArrayList(Column) = .empty;
+    if (findAlias(items, decl.row_type)) |ty| {
+        var inner = ty;
+        while (inner.* == .paren) inner = inner.paren;
+        if (inner.* != .record or inner.record.ext != null or inner.record.fields.len == 0) {
+            return e.errAtRule(decl.row_type, .table_decl, try std.fmt.allocPrint(a, "the rows of a table are a record: 'type alias {s} = {{ id : Str, ... }}'", .{decl.row_type}));
+        }
+        for (inner.record.fields) |f| {
+            const col_ty = columnType(items, f.ty) orelse {
+                return e.errAtRule(f.name, .table_decl, try std.fmt.allocPrint(a, "the column '{s}' of the table '{s}' can't be stored: a column is a Str, Int, Float, Bool, Posix, Uuid, Dec or Value (JSON), a type with one tag that holds one of these (type LinkId = LinkId Str), or a Maybe of one of these when it can be empty", .{ f.name, decl.name }));
+            };
+            if (col_ty.base == .json and e.json_alias == null) {
+                return e.errAtRule(f.name, .table_decl, try std.fmt.allocPrint(a, "the column '{s}' is JSON, a Value of the json package: add 'import Json.Value' (and 'Json: \"json\"' to the packages of the app)", .{f.name}));
+            }
+            const plain = try tr.snake(a, f.name);
+            try columns.append(a, .{ .name = f.name, .sql = try sqlIdent(a, plain), .plain = plain, .ty = col_ty });
+        }
+    } else if (try importedRowColumns(e, decl)) |imported| {
+        for (imported) |c| {
+            if (c.ty.base == .json and e.json_alias == null) {
+                return e.errAtRule(decl.row_type, .table_decl, try std.fmt.allocPrint(a, "the column '{s}' is JSON, a Value of the json package: add 'import Json.Value' (and 'Json: \"json\"' to the packages of the app)", .{c.name}));
+            }
+            try columns.append(a, c);
+        }
+    } else {
+        return e.errAtRule(decl.row_type, .table_decl, try std.fmt.allocPrint(a, "the table '{s}' holds rows of type {s}, but this module has no 'type alias {s} = {{ ... }}'", .{ decl.name, decl.row_type, decl.row_type }));
     }
 
     var table = try a.create(Table);

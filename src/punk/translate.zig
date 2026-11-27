@@ -214,10 +214,11 @@ pub fn schemaWith(arena: Allocator, src: []const u8, existing: ?[]const u8, diag
     const toks = try lex(arena, src, diag);
     var p = Parser{ .a = arena, .src = src, .toks = toks, .diag = diag };
     const items = try p.parseModule();
+    try renamePackages(arena, items);
     var e = Emitter{ .a = arena, .diag = diag, .src = src, .resolver = resolver };
     try e.findSqlQuery(items);
-    try query.resolveTables(&e, items);
     try e.loadImports(items);
+    try query.resolveTables(&e, items);
     return migrate.history(&e, items, existing);
 }
 
@@ -227,6 +228,7 @@ pub fn punkInterface(arena: Allocator, src: []const u8, diag: *Diagnostic, resol
     const toks = try lex(arena, src, diag);
     var p = Parser{ .a = arena, .src = src, .toks = toks, .diag = diag };
     const items = try p.parseModule();
+    try renamePackages(arena, items);
     var e = Emitter{ .a = arena, .diag = diag, .src = src, .resolver = resolver };
     // Its tables, and those of its imports: an error in them is reported
     // when the module itself is translated, so here it only leaves them out.
@@ -235,11 +237,11 @@ pub fn punkInterface(arena: Allocator, src: []const u8, diag: *Diagnostic, resol
         error.ParseError => tables_ok = false,
         error.OutOfMemory => return error.OutOfMemory,
     };
-    if (tables_ok) query.resolveTables(&e, items) catch |err| switch (err) {
+    if (tables_ok) e.loadImports(items) catch |err| switch (err) {
         error.ParseError => tables_ok = false,
         error.OutOfMemory => return error.OutOfMemory,
     };
-    if (tables_ok) e.loadImports(items) catch |err| switch (err) {
+    if (tables_ok) query.resolveTables(&e, items) catch |err| switch (err) {
         error.ParseError => tables_ok = false,
         error.OutOfMemory => return error.OutOfMemory,
     };
@@ -2013,6 +2015,9 @@ pub const Emitter = struct {
     /// Type names an import exposes unqualified that are such an alias of
     /// another module, with their Roc spelling (`Grid` is `Grid.GridAlias`).
     exposed_aliases: std.StringHashMapUnmanaged([]const u8) = .empty,
+    /// Record type aliases exposed unqualified by an import, so `table`
+    /// declarations in this module can use them as row types.
+    exposed_record_aliases: std.StringHashMapUnmanaged(ImportedRecord) = .empty,
     /// The names that mean the platform's `Sql.query` here (`Sql.query`,
     /// `Db.query` after `import pf.Sql as Db`, `query` when it is exposed):
     /// its SQL has to be written in the program (rule P301).
@@ -2043,19 +2048,31 @@ pub const Emitter = struct {
     foreign_at: ?[]const u8 = null,
 
     const MongoName = struct { name: []const u8, what: enum { collection, field } };
+    pub const ImportedRecord = struct { alias: []const u8, columns: ?[]const query.Column };
 
     /// A table of the program, and where an error about it points: its
     /// declaration, or the import of the module that declares it.
     pub const ProgramTable = struct { table: *const query.Table, at: []const u8, own: bool };
 
     /// Adds a table to `program_tables`, unless it is there already (a
-    /// module can come in through more than one import).
+    /// module can come in through more than one import). Own tables come
+    /// before imported ones so `schema.sql` order stays stable.
     pub fn addProgramTable(e: *Emitter, t: *const query.Table, at: []const u8, own: bool) Error!void {
         for (e.program_tables.items) |p| if (std.mem.eql(u8, p.table.plain(), t.plain())) {
             if (own or p.own) return e.errAtRule(at, .table_decl, try std.fmt.allocPrint(e.a, "there is already a table '{s}' in this program", .{t.decl.name}));
             return;
         };
-        try e.program_tables.append(e.a, .{ .table = t, .at = at, .own = own });
+        const entry: ProgramTable = .{ .table = t, .at = at, .own = own };
+        if (own) {
+            var pos = e.program_tables.items.len;
+            for (e.program_tables.items, 0..) |p, i| if (!p.own) {
+                pos = i;
+                break;
+            };
+            try e.program_tables.insert(e.a, pos, entry);
+        } else {
+            try e.program_tables.append(e.a, entry);
+        }
     }
 
     /// The table `t` of the module imported as `alias`, as this module uses
@@ -2069,7 +2086,7 @@ pub const Emitter = struct {
         return copy;
     }
 
-    fn importedType(e: *Emitter, ty: query.ColType, alias: []const u8) Error!query.ColType {
+    pub fn importedType(e: *Emitter, ty: query.ColType, alias: []const u8) Error!query.ColType {
         var out = ty;
         const wrap = ty.wrap orelse return out;
         if (std.mem.findScalar(u8, wrap.name, '.') != null) return out;
@@ -2201,8 +2218,8 @@ pub const Emitter = struct {
             else => {},
         };
         try e.findSqlQuery(items);
-        try query.resolveTables(e, items);
         try e.loadImports(items);
+        try query.resolveTables(e, items);
         // The app's schema.sql holds the tables of the whole program, so
         // the app checks them; a module's tables come in through it.
         if (moduleHeaderName(items) == null) if (e.resolver) |r| if (r.schema != Resolver.noSchema) try migrate.check(e, items, r.schema(r.ctx, e.a));
@@ -2295,7 +2312,8 @@ pub const Emitter = struct {
         const rest = std.mem.trimStart(u8, raw["module ".len..], " ");
         const end = std.mem.findAny(u8, rest, " \n") orelse rest.len;
         if (end == 0 or !std.ascii.isUpper(rest[0])) return null;
-        return rest[0..end];
+        const full = rest[0..end];
+        return if (std.mem.findScalarLast(u8, full, '.')) |dot| full[dot + 1 ..] else full;
     }
 
     fn emitItems(e: *Emitter, items: []const Item) Error!void {
@@ -2823,6 +2841,10 @@ pub const Emitter = struct {
                     if (!iface.exposesValue(try snake(e.a, raw))) return e.errAtText(raw, try std.fmt.allocPrint(e.a, "{s} does not expose {s}", .{ imp.alias, raw }));
                     continue;
                 }
+                if (iface.record_aliases.get(raw)) |cols| {
+                    if (!iface.exposesUpper(raw)) return e.errAtText(raw, try std.fmt.allocPrint(e.a, "{s} does not expose {s}", .{ imp.alias, raw }));
+                    try e.exposed_record_aliases.put(e.a, raw, .{ .alias = imp.alias, .columns = cols });
+                }
                 if (iface.own_alias) |own| if (std.mem.eql(u8, raw, own)) {
                     try e.exposed_aliases.put(e.a, raw, try std.fmt.allocPrint(e.a, "{s}.{s}Alias", .{ imp.alias, own }));
                     continue;
@@ -2938,7 +2960,7 @@ pub const Emitter = struct {
             package = path[0..dot];
             module = path[dot + 1 ..];
         }
-        var alias = module;
+        var alias = if (std.mem.findScalarLast(u8, module, '.')) |dot| module[dot + 1 ..] else module;
         var words = std.mem.tokenizeAny(u8, rest, " \t\r\n");
         if (words.next()) |w1| if (std.mem.eql(u8, w1, "as")) {
             if (words.next()) |name| alias = name;
@@ -2971,7 +2993,16 @@ pub const Emitter = struct {
                 };
                 try iface.types.put(e.a, tn.name, tags.items);
             },
-            .type_alias => |ta| try iface.types.put(e.a, ta.name, &.{}),
+            .type_alias => |ta| {
+                try iface.types.put(e.a, ta.name, &.{});
+                if (ta.params.len == 0) {
+                    var inner = ta.ty;
+                    while (inner.* == .paren) inner = inner.paren;
+                    if (inner.* == .record) {
+                        try iface.record_aliases.put(e.a, ta.name, try query.recordColumns(e.a, items, ta.ty));
+                    }
+                }
+            },
             .table => |t| try iface.tables.put(e.a, t.name, {}),
             .raw, .expect, .migrate => {},
         };

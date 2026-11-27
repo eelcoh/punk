@@ -34,6 +34,10 @@ pub const Interface = struct {
     /// with `type alias Grid = ...`, as in Elm). In Roc the module itself is
     /// the type `Grid`, so the alias is written `Grid.GridAlias` there.
     own_alias: ?[]const u8 = null,
+    /// Record type aliases defined in the module (`type alias Row = { ... }`),
+    /// with their storable columns, or null when a field cannot be stored as a
+    /// table column. Lets another module declare `table rows : Row`.
+    record_aliases: std.StringHashMapUnmanaged(?[]const query.Column) = .empty,
     /// The names of the tables the module declares (`table links : Link`).
     /// A table is not a value: it can be exposed and imported, so that
     /// another module's queries start from it.

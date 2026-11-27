@@ -5,8 +5,18 @@
 //!     punk2roc --fmt input.punk      # prints the file as `punk fmt` lays it out
 
 const std = @import("std");
+const mod = @import("mod.zig");
 const punk = @import("translate.zig");
 const format = @import("format.zig");
+
+const Disk = struct {
+    io: std.Io,
+
+    fn read(ctx: ?*anyopaque, allocator: std.mem.Allocator, path: []const u8) ?[]u8 {
+        const disk: *const Disk = @ptrCast(@alignCast(ctx.?));
+        return std.Io.Dir.cwd().readFileAlloc(disk.io, path, allocator, .limited(16 * 1024 * 1024)) catch null;
+    }
+};
 
 /// Entry point of the `punk2roc` command.
 pub fn main(init: std.process.Init) void {
@@ -47,7 +57,9 @@ fn run(init: std.process.Init) RunError!void {
     };
 
     var diag: punk.Diagnostic = .{};
-    const roc = (if (fmt) format.format(arena, src, &diag) else punk.translate(arena, src, &diag)) catch |err| switch (err) {
+    var disk: Disk = .{ .io = io };
+    const resolver = try mod.resolverFor(arena, path, .{ .ctx = &disk, .read = Disk.read });
+    const roc = (if (fmt) format.formatWith(arena, src, &diag, resolver) else punk.translateWith(arena, src, &diag, resolver)) catch |err| switch (err) {
         error.ParseError, error.Unsafe => {
             std.debug.print("{s}:{d}:{d}: {s}\n", .{ path, diag.line, diag.col, diag.message });
             std.process.exit(1);

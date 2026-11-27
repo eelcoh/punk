@@ -47,7 +47,7 @@ On macOS or Linux, without Zig or Rust:
 curl -fsSL https://raw.githubusercontent.com/eelcoh/punk/main/install.sh | sh
 ```
 
-Once the first release is tagged, this installs the latest release in `~/.punk` (the compiler, the platforms,
+This installs the latest release in `~/.punk` (the compiler, the platforms,
 the packages and `llms.txt`), links `punk` into `~/.local/bin`, and checks
 the download against the release's `SHA256SUMS` first. `PUNK_VERSION`,
 `PUNK_HOME` and `PUNK_BIN_DIR` change what and where (see `install.sh`).

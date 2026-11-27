@@ -111,6 +111,9 @@ const Renderer = struct {
     /// commas on lines of their own. Such a bracket gets a space after it,
     /// Elm style (`[ 1` / `, 2` / `]`).
     spans_lines: []bool = &.{},
+    /// For each trailing `,` at the end of a line inside brackets: move it
+    /// to a leading `, ` on the next line.
+    move_comma: []bool = &.{},
 
     fn w(r: *Renderer, s: []const u8) Error!void {
         try r.out.appendSlice(r.a, s);
@@ -160,20 +163,46 @@ const Renderer = struct {
     fn markLeadingCommas(r: *Renderer) Error!void {
         r.spans_lines = try r.a.alloc(bool, r.toks.len);
         @memset(r.spans_lines, false);
-        var open: std.ArrayList(usize) = .empty;
-        for (r.toks, 0..) |t, i| switch (t.tag) {
-            .lparen, .lbrack, .lbrace => try open.append(r.a, i),
-            .rparen, .rbrack, .rbrace => _ = open.pop(),
-            .comma => if (t.first_on_line and open.items.len > 0) {
-                r.spans_lines[open.items[open.items.len - 1]] = true;
-            },
-            else => {},
-        };
+        r.move_comma = try r.a.alloc(bool, r.toks.len);
+        @memset(r.move_comma, false);
+        const Open = struct { index: usize, is_lambda: bool };
+        var open: std.ArrayList(Open) = .empty;
+        var i: usize = 0;
+        while (i < r.toks.len) {
+            const t = r.toks[i];
+            if (t.tag == .kw_header and t.first_on_line and t.col == 1) {
+                while (i + 1 < r.toks.len and r.toks[i + 1].tag != .eof and !(r.toks[i + 1].first_on_line and r.toks[i + 1].col == 1)) i += 1;
+                i += 1;
+                continue;
+            }
+            switch (t.tag) {
+                .lparen, .lbrack, .lbrace => try open.append(r.a, .{
+                    .index = i,
+                    .is_lambda = t.tag == .lparen and i + 1 < r.toks.len and r.toks[i + 1].tag == .kw_fn,
+                }),
+                .rparen, .rbrack, .rbrace => _ = open.pop(),
+                .comma => if (open.items.len > 0) {
+                    const top = open.items[open.items.len - 1];
+                    if (t.first_on_line) {
+                        r.spans_lines[top.index] = true;
+                    } else if (!top.is_lambda and i + 1 < r.toks.len and r.toks[i + 1].first_on_line and !isClose(r.toks[i + 1].tag) and r.toks[i + 1].tag != .eof) {
+                        r.move_comma[i] = true;
+                        r.spans_lines[top.index] = true;
+                    }
+                },
+                else => {},
+            }
+            i += 1;
+        }
     }
 
     fn run(r: *Renderer) Error![]const u8 {
         try r.markLeadingCommas();
         try r.stack.append(r.a, .{ .orig = 1, .new = 1 });
+        const Bracket = struct { tag: Tag, comma_col: ?u32 };
+        var brackets: std.ArrayList(Bracket) = .empty;
+        var pending_comma = false;
+        var pending_col: ?u32 = null;
         var prev: ?Token = null;
         var prev_end: usize = 0;
         // The first token of the previous top-level item, and its second.
@@ -187,8 +216,27 @@ const Renderer = struct {
                 try r.lineGap(gap, prev != null, false, 0, true);
                 break;
             }
+            if (t.tag == .comma and r.move_comma[i]) {
+                const comment = std.mem.trim(u8, gap, " \r");
+                if (comment.len > 0) {
+                    try r.w(" ");
+                    try r.w(comment);
+                }
+                pending_comma = true;
+                pending_col = if (brackets.items.len > 0) brackets.items[brackets.items.len - 1].comma_col else null;
+                prev_end = t.end;
+                i += 1;
+                continue;
+            }
+            var moved_comma = false;
             if (t.first_on_line) {
-                const new_col = try r.indentFor(t.col);
+                const new_col = if (pending_comma) blk: {
+                    if (pending_col) |col| {
+                        while (r.stack.items.len > 1 and r.stack.items[r.stack.items.len - 1].new > col) r.stack.items.len -= 1;
+                        break :blk col;
+                    }
+                    break :blk try r.indentFor(t.col);
+                } else try r.indentFor(t.col);
                 var tight = false;
                 if (t.col == 1) {
                     if (item_first) |f| tight = tightAfter(f, item_second, t, if (i + 1 < r.toks.len) r.toks[i + 1] else t);
@@ -199,7 +247,16 @@ const Renderer = struct {
                 r.old_indent = t.col;
                 r.new_indent = new_col;
                 try r.spaces(new_col - 1);
+                if (pending_comma) {
+                    try r.w(", ");
+                    pending_comma = false;
+                    pending_col = null;
+                    moved_comma = true;
+                }
                 r.prev_unary = false;
+                if (t.tag == .bar and !moved_comma and brackets.items.len > 0 and brackets.items[brackets.items.len - 1].tag == .lbrace) {
+                    brackets.items[brackets.items.len - 1].comma_col = new_col;
+                }
             } else {
                 try r.inlineGap(gap, prev.?, t, i);
             }
@@ -218,6 +275,11 @@ const Renderer = struct {
                 prev_end = r.toks[j].end;
                 i = j + 1;
                 continue;
+            }
+            if (isOpen(t.tag)) {
+                try brackets.append(r.a, .{ .tag = t.tag, .comma_col = if (t.first_on_line and !moved_comma) r.new_indent else null });
+            } else if (isClose(t.tag)) {
+                _ = brackets.pop();
             }
             const delta: i64 = @as(i64, r.new_indent) - @as(i64, r.old_indent);
             try r.writeShifted(r.src[t.start..t.end], delta);

@@ -95,7 +95,8 @@ for f in $server_apps; do
         echo "FAIL check $f"
         sed 's/^/     /' "$work/check" | tail -n 30
         failed=$((failed + 1))
-    fi    # Its top-level `expect`s do run: they are pure.
+    fi
+    # Its top-level `expect`s do run: they are pure.
     if grep -q '^expect' "examples/$f"; then
         if "$roc" test "examples/$f" > "$work/test" 2>&1; then
             echo "ok   test $f"
@@ -108,29 +109,17 @@ for f in $server_apps; do
     fi
 done
 
-# The expects of a server or terminal app (a router, a decoder: the parts
-# that do no effects) run with `punk test`.
-for f in $server_apps; do
-    grep -q '^expect ' "examples/$f" || continue
-    if "$roc" test "examples/$f" > "$work/test" 2>&1; then
-        echo "ok   test $f"
-        passed=$((passed + 1))
-    else
-        echo "FAIL test $f"
-        sed 's/^/     /' "$work/test" | tail -n 30
-        failed=$((failed + 1))
-    fi
-done
-
 # A schema.sql next to an app with tables is up to date: `punk check
 # --schema` (run on a copy, as it writes schema.sql) has no version to add.
 for schema in $(find examples -name schema.sql | sort); do
-    app=$(grep -l '^table ' "$(dirname "$schema")"/*.punk 2>/dev/null | head -n 1)
-    copy="$work/schema/$(dirname "$schema")"
+    dir=$(dirname "$schema")
+    app=$(grep -l '^app ' "$dir"/*.punk 2>/dev/null | head -n 1)
+    [ -z "$app" ] && app=$(grep -l '^table ' "$dir"/*.punk 2>/dev/null | head -n 1)
+    copy="$work/schema/$dir"
     mkdir -p "$copy"
-    if [ -n "$app" ]; then cp "$app" "$schema" "$copy/"; fi
+    if [ -n "$app" ]; then cp "$dir"/*.punk "$schema" "$copy/"; fi
     if [ -z "$app" ]; then
-        echo "FAIL $schema: no .punk file next to it declares a table"
+        echo "FAIL $schema: no .punk file next to it declares an app or table"
         failed=$((failed + 1))
     elif "$roc" check --schema "$copy/$(basename "$app")" > "$work/schema.out" 2>&1 && grep -q 'is up to date' "$work/schema.out"; then
         echo "ok   schema $schema"

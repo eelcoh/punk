@@ -1,0 +1,5 @@
+module Greeting exposing (forName)
+
+forName : Str -> Str
+forName = fn name ->
+    "Hello, ${name}!"

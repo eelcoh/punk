@@ -1,15 +1,18 @@
 #!/bin/sh
-# punk new: a new punk-lang app, ready to build, with its agent instructions.
+# punk new: a new punk-lang app or package, with its agent instructions.
 #
-#     punk new <cli|server|tui> <name> [<folder>]
+#     punk new <cli|server|tui|package> <name> [<folder>]
 #
 # Makes <folder> (default: <name>) with:
 #
 #   <Name>.punk           the app: a hello world for its platform
+#   main.roc              (package) the manifest listing public modules
+#   Greeting.punk         (package) a starter module
+#   test/PackageTest.punk  (package) an app testing the public API
 #   schema.sql            (server) the tables, made by `punk check --schema`
 #   server/ or tui/       (server, tui) the Rust crate that runs the app:
 #                         `cargo run` builds the app with `punk build`
-#   AGENTS.md             what an agent needs to know (templates/<platform>)
+#   AGENTS.md             what an agent needs to know (templates/<kind>)
 #   .claude/skills/       the punk skills (skills/), for Claude Code and others
 #   Dockerfile            (server) the app as a container image, for a
 #                         database that runs elsewhere (.dockerignore too)
@@ -28,11 +31,12 @@ die() { echo "punk new: $*" >&2; exit 1; }
 
 usage() {
     cat <<'EOF'
-usage: punk new <platform> <name> [<folder>]
+usage: punk new <kind> <name> [<folder>]
 
-  <platform>  cli     a command-line program (no Rust needed)
+  <kind>      cli     a command-line program (no Rust needed)
               server  an HTTP server with Postgres (needs Rust: rustup.rs)
               tui     a terminal app (needs Rust: rustup.rs)
+              package a library with a public API test (no Rust needed)
   <name>      lowercase letters, digits and -, such as notes or my-notes
   <folder>    where to make it (default: <name>)
 EOF
@@ -42,11 +46,11 @@ case "${1:-}" in
     -h | --help | help) usage; exit 0 ;;
 esac
 [ $# -ge 2 ] && [ $# -le 3 ] || { usage >&2; exit 2; }
-platform=$1 app=$2 folder=${3:-$2}
+kind=$1 app=$2 folder=${3:-$2}
 
-case "$platform" in
-    cli | server | tui) ;;
-    *) die "no platform \"$platform\": give cli, server or tui" ;;
+case "$kind" in
+    cli | server | tui | package) ;;
+    *) die "unknown kind \"$kind\": give cli, server, tui or package" ;;
 esac
 case "$app" in
     [a-z]*) ;;
@@ -100,7 +104,7 @@ fill() {
         -e "s|@punk:platforms/server/hermit/vendor/socket2@|$(punk_dep platforms/server/hermit/vendor/socket2)|g" \
         -e "s|@punk:platforms/server/hermit/vendor/tokio@|$(punk_dep platforms/server/hermit/vendor/tokio)|g" \
         -e "s|@punk:platforms/server/hermit/vendor/whoami@|$(punk_dep platforms/server/hermit/vendor/whoami)|g" \
-        -e "s|@platform@|$platform|g" \
+        -e "s|@platform@|$kind|g" \
         -e "s|@rust@|$rust|g" \
         -e "s|@version@|$version|g" \
         -e "s|App\.punk|$Name.punk|g" \
@@ -108,19 +112,25 @@ fill() {
 }
 
 mkdir -p "$folder"
-fill "$here/$platform/App.punk" "$folder/$Name.punk"
-fill "$share/templates/$platform/AGENTS.md" "$folder/AGENTS.md"
-if [ "$platform" = server ]; then
+if [ "$kind" = package ]; then
+    mkdir -p "$folder/test"
+    cp "$here/package/main.roc" "$here/package/Greeting.punk" "$folder/"
+    cp "$here/package/test/PackageTest.punk" "$folder/test/"
+else
+    fill "$here/$kind/App.punk" "$folder/$Name.punk"
+fi
+fill "$share/templates/$kind/AGENTS.md" "$folder/AGENTS.md"
+if [ "$kind" = server ]; then
     cp "$here/server/schema.sql" "$folder/schema.sql"
     fill "$here/server/Dockerfile" "$folder/Dockerfile"
     cp "$here/server/dockerignore" "$folder/.dockerignore"
 fi
-if [ "$platform" != cli ]; then
-    crate_dir="$folder/$platform"
+if [ "$kind" = server ] || [ "$kind" = tui ]; then
+    crate_dir="$folder/$kind"
     # Cargo.toml.in: a template named Cargo.toml would be read by cargo as a
     # package when an app depends on this repository.
-    (cd "$here/$platform/$platform" && find . -type f) | while read -r f; do
-        fill "$here/$platform/$platform/$f" "$crate_dir/${f%.in}"
+    (cd "$here/$kind/$kind" && find . -type f) | while read -r f; do
+        fill "$here/$kind/$kind/$f" "$crate_dir/${f%.in}"
     done
     fill "$here/build.rs" "$crate_dir/build.rs"
     cp "$toolchain" "$crate_dir/rust-toolchain.toml"
@@ -134,7 +144,7 @@ mkdir -p "$folder/.claude/skills"
 for skill in "$share"/skills/*/; do
     cp -R "${skill%/}" "$folder/.claude/skills/"
 done
-fill "$here/$platform/README.md" "$folder/README.md"
+fill "$here/$kind/README.md" "$folder/README.md"
 cat > "$folder/.gitignore" <<'EOF'
 target/
 EOF
@@ -146,9 +156,13 @@ else
     made_git=""
 fi
 
-echo "made $folder$made_git, a $platform app:"
-case "$platform" in
+case "$kind" in
+    package) echo "made $folder$made_git, a punk package:" ;;
+    *) echo "made $folder$made_git, a $kind app:" ;;
+esac
+case "$kind" in
     cli) echo "    cd $folder && punk $Name.punk" ;;
     server) echo "    cd $folder/server && cargo run      # see README.md for the database" ;;
     tui) echo "    cd $folder/tui && cargo run" ;;
+    package) echo "    cd $folder && punk test test/PackageTest.punk" ;;
 esac

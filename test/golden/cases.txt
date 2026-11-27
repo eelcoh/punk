@@ -30,6 +30,7 @@ imports/app             imports/app.punk
 equality                equality/equality.punk
 json                    json/json.punk
 numbers                 numbers.punk
+checked-int             checked-int.punk
 platform/io-stdin       platform/io.punk            lines.txt
 platform/io-file        platform/io.punk            -           lines.txt
 platform/io-missing     platform/io.punk            -           does-not-exist.txt

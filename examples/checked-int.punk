@@ -1,0 +1,29 @@
+app [main!] { Platform: platform "cli" }
+
+import Platform.Stdout
+
+-- In cents. Each failed operation returns before the next one runs.
+shareCost : Int -> Int -> Int -> Int -> Int -> Result Int (DivByZero | Overflow)
+shareCost = fn quantity, unitPrice, fee, discount, people ->
+    subtotal = try Int.checkedMul quantity unitPrice
+    total =
+        subtotal
+            |> try Int.checkedAdd fee
+            |> try Int.checkedSub discount
+    total |> Int.checkedDiv people
+
+describe : Result Int (DivByZero | Overflow) -> Str
+describe = fn result ->
+    case result of
+        Ok cents -> String.fromInt cents
+        Err DivByZero -> "division by zero"
+        Err Overflow -> "overflow"
+
+main! = fn () ->
+    Stdout.line! "share: ${describe (shareCost 2 350 100 50 3)}"
+    Stdout.line! "multiplication: ${describe (shareCost 2 I64.highest 0 0 2)}"
+    Stdout.line! "addition: ${describe (shareCost 1 I64.highest 1 0 2)}"
+    Stdout.line! "subtraction: ${describe (shareCost 1 I64.lowest 0 1 2)}"
+    Stdout.line! "division: ${describe (shareCost 1 I64.lowest 0 0 -1)}"
+    Stdout.line! "zero divisor: ${describe (shareCost 1 7 0 0 0)}"
+    Stdout.line! "negative share: ${describe (shareCost 1 -7 0 0 2)}"

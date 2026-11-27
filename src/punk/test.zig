@@ -1613,6 +1613,18 @@ test "numbers: dividing by zero gives 0, as in Elm" {
     );
 }
 
+test "numbers: checked integer helpers accept pipelines and partial application" {
+    try check("subtractFee = Int.checkedSub fee\nperPerson = fn total -> total |> Int.checkedDiv people\n",
+        \\subtract_fee = |punk_a1| punk_int_checked_sub(fee, punk_a1)
+        \\per_person = |total| punk_int_checked_div(people, total)
+        \\
+        \\punk_int_checked_sub = |right, left| I64.minus_try(left, right)
+        \\
+        \\punk_int_checked_div = |right, left| I64.div_try(left, right)
+        \\
+    );
+}
+
 // punk fmt (format.zig)
 
 const format = @import("format.zig");

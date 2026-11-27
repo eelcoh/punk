@@ -54,6 +54,7 @@ STDLIB = {
     "Str": ["splitOn", "joinWith", "toUtf8", "fromUtf8", "dropPrefix", "dropSuffix", "splitFirst"],
     "Maybe": ["withDefault", "map", "andThen"],
     "Result": ["map", "mapError", "withDefault", "andThen", "toMaybe", "fromMaybe", "isOk"],
+    "Int": ["checkedAdd", "checkedSub", "checkedMul", "checkedDiv"],
     "Tuple": ["first", "second", "pair", "mapFirst", "mapSecond"],
     "Dict": [
         "empty", "insert", "get", "update", "remove", "contains", "keys",
@@ -109,6 +110,10 @@ HELPERS = {
     "identity": "a -> a",
     "mod_by": "Int -> Int -> Int",
     "remainder_by": "Int -> Int -> Int",
+    "Int.checked_add": "Int -> Int -> Result Int (Overflow | ..others)",
+    "Int.checked_sub": "Int -> Int -> Result Int (Overflow | ..others)",
+    "Int.checked_mul": "Int -> Int -> Result Int (Overflow | ..others)",
+    "Int.checked_div": "Int -> Int -> Result Int (DivByZero | Overflow)",
 }
 
 # Elm's module name for Roc's: `String.split` is `Str.split_on`.
@@ -134,7 +139,7 @@ def tables():
     renames_block = elm[elm.index("const renames"):elm.index("const helpers")]
     renames = dict(re.findall(r'\.\{ "([\w.]+)", "([\w.]+)" \}', renames_block))
     helpers = set(re.findall(r'\.\{ "([\w.]+)", Helper\{', elm))
-    helpers |= set(re.findall(r'"(mod_by|remainder_by)"', numbers))
+    helpers |= set(re.findall(r'^\s*\.\{ "([\w.]+)", ', numbers, re.MULTILINE))
     return fns, aliases, renames, helpers
 
 

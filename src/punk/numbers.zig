@@ -11,9 +11,8 @@
 //! does not know the types of values, and only Roc's integer types have
 //! `plus_wrap`, so `a + b` keeps Roc's meaning, which crashes on overflow.
 //!
-//! The alternative later on is `Result`: set `policy` to `.roc` to get Roc's
-//! own behaviour back (crash on division by zero), the starting point for a
-//! `Result`-returning version.
+//! The explicit `Int.checked*` functions return `Result` using Roc's checked
+//! I64 builtins. They take the right operand first for pipelines.
 
 const std = @import("std");
 const elm = @import("elm.zig");
@@ -37,17 +36,15 @@ pub fn operator(op: []const u8) ?elm.Helper {
     return null;
 }
 
-/// The helper for one of Elm's number functions (`mod_by`, in Roc's
-/// spelling), or null.
+/// The helper for a named number function (`mod_by`, `Int.checked_add`), or null.
 pub fn helper(snake_name: []const u8) ?elm.Helper {
-    if (std.mem.eql(u8, snake_name, "mod_by")) return mod_by;
-    if (std.mem.eql(u8, snake_name, "remainder_by")) return remainder_by;
-    return null;
+    return named_helpers.get(snake_name);
 }
 
 /// The helper called `name` (`punk_int_div`), or null.
 pub fn helperByName(name: []const u8) ?elm.Helper {
-    for ([_]elm.Helper{ int_div, int_rem, mod_by, remainder_by }) |h| if (std.mem.eql(u8, h.name, name)) return h;
+    for ([_]elm.Helper{ int_div, int_rem }) |h| if (std.mem.eql(u8, h.name, name)) return h;
+    for (named_helpers.values()) |h| if (std.mem.eql(u8, h.name, name)) return h;
     return null;
 }
 
@@ -68,3 +65,20 @@ const mod_by: elm.Helper = .{
 
 /// Elm's `remainderBy n x`: the result has the sign of `x`, `remainderBy 3 -1 == -1`.
 const remainder_by: elm.Helper = .{ .name = "punk_remainder_by", .arity = 2, .def = "punk_remainder_by = |n, x| " ++ guard("n", "x % n") };
+
+const named_helpers = std.StaticStringMap(elm.Helper).initComptime(.{
+    .{ "mod_by", mod_by },
+    .{ "remainder_by", remainder_by },
+    .{ "Int.checked_add", checked("punk_int_checked_add", "plus_try") },
+    .{ "Int.checked_sub", checked("punk_int_checked_sub", "minus_try") },
+    .{ "Int.checked_mul", checked("punk_int_checked_mul", "times_try") },
+    .{ "Int.checked_div", checked("punk_int_checked_div", "div_try") },
+});
+
+fn checked(comptime name: []const u8, comptime builtin_name: []const u8) elm.Helper {
+    return .{
+        .name = name,
+        .arity = 2,
+        .def = name ++ " = |right, left| I64." ++ builtin_name ++ "(left, right)",
+    };
+}

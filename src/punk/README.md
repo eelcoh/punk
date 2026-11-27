@@ -379,11 +379,16 @@ and `remainderBy 0 7` are all `0`. `modBy` and `remainderBy` are Elm's (the
 result of `modBy` has the sign of the divisor, of `remainderBy` that of the
 number). `a // b` is written as `punk_int_div(a, b)` in the translation.
 
-All of this is in `src/punk/numbers.zig`; its `policy` switches back to
-Roc's behaviour, the starting point if this becomes a `Result` later.
-Wrapping on overflow of `+`, `-` and `*` is not done yet: the translator
-does not know the types of values, and only Roc's integer types can wrap,
-so `a + b` still crashes on overflow, as in Roc.
+The `policy` in `src/punk/numbers.zig` controls division and remainder by
+zero. Ordinary `+`, `-` and `*` keep Roc's overflow behavior.
+
+Use `Int.checkedAdd`, `Int.checkedSub`, `Int.checkedMul` and `Int.checkedDiv`
+for explicit failure on signed 64-bit integers. The right operand comes
+first, so `value |> Int.checkedSub discount` subtracts `discount` from
+`value`. The helpers return `Err Overflow` for an out-of-range result and
+`Int.checkedDiv` returns `Err DivByZero` when its divisor is zero. Division
+truncates toward zero. The [cost-sharing example](../../examples/checked-int.punk)
+uses `try` to propagate the errors.
 
 ## A platform of its own
 

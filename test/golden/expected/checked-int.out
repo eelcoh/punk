@@ -1,0 +1,8 @@
+share: 250
+multiplication: overflow
+addition: overflow
+subtraction: overflow
+division: overflow
+zero divisor: division by zero
+negative share: -3
+exit 0

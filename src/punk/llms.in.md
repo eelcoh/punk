@@ -145,6 +145,13 @@ functions of the source type:
 | may not fit | `I64.toU8Try n` (a `Result`), or `I64.toU8Wrap n` (wraps around) |
 | to and from text | `I64.toStr n`, `U64.fromStr s` (a `Result`), `String.fromInt`, `String.toInt` (a `Maybe`) |
 
+Use `Int.checkedAdd`, `Int.checkedSub`, `Int.checkedMul` and `Int.checkedDiv`
+when arithmetic can fail. They take the right operand first, so
+`7 |> Int.checkedSub 2` gives `Ok 5` and `7 |> Int.checkedDiv 2` gives `Ok 3`.
+Division truncates toward zero. All four return `Err Overflow` when the
+result does not fit in `Int`; division returns `Err DivByZero` for a zero
+divisor. Match on the result or propagate the error with `try`.
+
 A character literal `'a'` is a number (its code). `Str.toUtf8 s` gives the
 bytes of a string as `List U8`, and `'0'` compares with them, so the digit of
 a byte `b` is `U8.toI64 (b - '0')`.
